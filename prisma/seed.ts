@@ -481,7 +481,7 @@ async function main() {
   // ─── USERS ───
   const passwordHash = await bcrypt.hash('Password123!', 12);
 
-  await Promise.all([
+  const users = await Promise.all([
     prisma.user.create({
       data: {
         email: 'admin@test.com', passwordHash,
@@ -526,7 +526,7 @@ async function main() {
     }),
   ]);
 
-  console.log('✅ Created 5 demo users');
+  console.log(`✅ Created ${users.length} demo users`);
 
   // ─── SAMPLE ORDERS ───
   const retailerUser = await prisma.user.findUnique({ where: { email: 'retailer@test.com' } });
@@ -701,7 +701,6 @@ async function main() {
   console.log('✅ Created threshold configs');
 
   // Sample Notifications for retailer user
-  const retailerUser = users.find((u) => u.email === 'retailer@test.com');
   if (retailerUser) {
     await Promise.all([
       prisma.notification.create({

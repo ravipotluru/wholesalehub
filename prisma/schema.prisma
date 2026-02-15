@@ -1,0 +1,838 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── ENUMS ───
+
+enum UserRole {
+  ADMIN
+  RETAILER
+  WHOLESALER
+  WAREHOUSE_STAFF
+  ANALYST
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
+enum ProductStatus {
+  ACTIVE
+  DISCONTINUED
+  SEASONAL
+}
+
+enum StockStatus {
+  IN_STOCK
+  LOW_STOCK
+  OUT_OF_STOCK
+  BACKORDER
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  PARTIALLY_SHIPPED
+  DELIVERED
+  CANCELLED
+  REJECTED
+}
+
+enum PaymentStatus {
+  PENDING
+  AUTHORIZED
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum LineStatus {
+  PENDING
+  SHIPPED
+  CANCELLED
+  BACKORDERED
+}
+
+enum ReceiptStatus {
+  PENDING_DOCUMENT
+  PARSED
+  VALIDATION_ERROR
+  AWAITING_ARRIVAL
+  PARTIAL_RECEIVED
+  FULLY_RECEIVED
+  CLOSED
+  DISPUTED
+  CANCELLED
+}
+
+enum ItemCondition {
+  PENDING
+  GOOD
+  DAMAGED_MINOR
+  DAMAGED_MAJOR
+  WRONG_ITEM
+}
+
+enum ReceiptLineStatus {
+  PENDING
+  RECEIVED
+  SHORT
+  OVER
+  DAMAGED
+}
+
+enum DiscrepancyType {
+  SHORT
+  OVER
+  DAMAGED
+  WRONG_ITEM
+  QUALITY_ISSUE
+}
+
+enum DiscrepancyResolution {
+  ACCEPT_AS_IS
+  RETURN
+  CREDIT_REQUEST
+  DESTROY
+  CREATE_BACKORDER
+}
+
+enum TransactionType {
+  RECEIPT
+  SALE
+  ADJUSTMENT
+  RETURN
+  DAMAGE
+}
+
+enum PriceChangeReason {
+  PROMO
+  COST_INCREASE
+  SEASONAL
+  COMPETITIVE
+}
+
+enum BarcodeType {
+  UPC
+  EAN13
+  EAN8
+  CODE128
+  CODE39
+}
+
+enum WholesalerStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING_APPROVAL
+}
+
+enum RetailerStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum CategoryStatus {
+  ACTIVE
+  INACTIVE
+}
+
+// ─── MODELS ───
+
+model User {
+  id               String     @id @default(cuid())
+  email            String     @unique
+  passwordHash     String
+  role             UserRole   @default(RETAILER)
+  status           UserStatus @default(ACTIVE)
+  firstName        String
+  lastName         String
+  phone            String?
+  retailerId       String?
+  wholesalerId     String?
+  ageVerified      Boolean    @default(false)
+  lastLoginAt      DateTime?
+  failedLoginCount Int        @default(0)
+  lockedUntil      DateTime?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  retailer      Retailer?      @relation(fields: [retailerId], references: [id])
+  wholesaler    Wholesaler?    @relation(fields: [wholesalerId], references: [id])
+  orders        Order[]
+  receiptScans  ReceiptScan[]
+  searchLogs    SearchLog[]
+  notifications Notification[]
+
+  @@map("users")
+}
+
+model Wholesaler {
+  id               String           @id @default(cuid())
+  wholesalerId     String           @unique // WS001, WS002...
+  name             String
+  businessName     String
+  taxId            String?
+  licenseNumber    String?
+  licenseState     String?
+  licenseExpiry    DateTime?
+  contactName      String
+  contactEmail     String
+  contactPhone     String?
+  address          String?
+  city             String?
+  state            String?
+  zipCode          String?
+  businessType     String?
+  paymentTerms     String?          @default("NET30")
+  minimumOrderValue Decimal?        @db.Decimal(10, 2)
+  shippingMethods  Json?
+  status           WholesalerStatus @default(PENDING_APPROVAL)
+  ratingAvg        Decimal?         @db.Decimal(3, 2)
+  ratingCount      Int              @default(0)
+  isVerified       Boolean          @default(false)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  users         User[]
+  pricings      ProductPricing[]
+  priceHistory  PriceHistory[]
+  orders        Order[]
+
+  @@map("wholesalers")
+}
+
+model Retailer {
+  id             String         @id @default(cuid())
+  retailerId     String         @unique // RT001, RT002...
+  name           String
+  businessName   String
+  storeType      String?        // Smoke Shop, Gas Station, Convenience Store
+  contactEmail   String
+  address        String?
+  city           String?
+  state          String?
+  zipCode        String?
+  latitude       Decimal?       @db.Decimal(10, 7)
+  longitude      Decimal?       @db.Decimal(10, 7)
+  creditLimit    Decimal?       @db.Decimal(10, 2)
+  paymentMethod  String?
+  status         RetailerStatus @default(ACTIVE)
+  lifetimeValue  Decimal?       @db.Decimal(12, 2) @default(0)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  users     User[]
+  cartItems CartItem[]
+  orders    Order[]
+
+  @@map("retailers")
+}
+
+model Category {
+  id           String         @id @default(cuid())
+  categoryId   String         @unique // CAT001, CAT002...
+  name         String
+  level        Int            @default(1) // 1=top, 2=sub
+  parentId     String?
+  parent       Category?      @relation("CategoryTree", fields: [parentId], references: [id])
+  children     Category[]     @relation("CategoryTree")
+  displayOrder Int            @default(0)
+  iconName     String?
+  description  String?
+  status       CategoryStatus @default(ACTIVE)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  products Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id               String        @id @default(cuid())
+  productId        String        @unique // PRD001, PRD002...
+  sku              String        @unique
+  upcCode          String?
+  name             String
+  description      String?
+  brand            String?
+  manufacturer     String?
+  categoryId       String?
+  subCategory      String?
+  color            String?
+  size             String?
+  material         String?
+  flavor           String?
+  nicotineStrength String?
+  unitOfMeasure    String?       @default("EACH")
+  unitsPerCase     Int?
+  weightLbs        Decimal?      @db.Decimal(8, 2)
+  ageRestricted    Boolean       @default(true)
+  minimumAge       Int           @default(21)
+  restrictedStates Json?         // string[]
+  imageUrl         String?
+  imageUrls        Json?         // string[]
+  searchKeywords   String?
+  tags             Json?         // string[]
+  status           ProductStatus @default(ACTIVE)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  category      Category?        @relation(fields: [categoryId], references: [id])
+  pricings      ProductPricing[]
+  priceHistory  PriceHistory[]
+  barcodes      ProductBarcode[]
+  cartItems     CartItem[]
+  orderLines    OrderLine[]
+  receiptLines  ReceiptLine[]
+  inventoryOnHand InventoryOnHand?
+  inventoryTransactions InventoryTransaction[]
+
+  @@map("products")
+}
+
+model ProductBarcode {
+  id          String      @id @default(cuid())
+  productId   String
+  barcode     String      @unique
+  barcodeType BarcodeType @default(UPC)
+  createdAt   DateTime    @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("product_barcodes")
+}
+
+model ProductPricing {
+  id              String     @id @default(cuid())
+  productId       String
+  wholesalerId    String
+  wholesalePrice  Decimal    @db.Decimal(10, 2)
+  msrp            Decimal?   @db.Decimal(10, 2)
+  minimumOrderQty Int        @default(1)
+  caseQty         Int?
+  pricePerCase    Decimal?   @db.Decimal(10, 2)
+  stockQuantity   Int        @default(0)
+  stockStatus     StockStatus @default(IN_STOCK)
+  leadTimeDays    Int?
+  onPromotion     Boolean    @default(false)
+  promoPrice      Decimal?   @db.Decimal(10, 2)
+  promoStartDate  DateTime?
+  promoEndDate    DateTime?
+  isActive        Boolean    @default(true)
+  validFrom       DateTime   @default(now())
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  product    Product    @relation(fields: [productId], references: [id])
+  wholesaler Wholesaler @relation(fields: [wholesalerId], references: [id])
+
+  @@unique([productId, wholesalerId])
+  @@map("product_pricings")
+}
+
+model PriceHistory {
+  id                 String            @id @default(cuid())
+  productId          String
+  wholesalerId       String
+  effectiveDate      DateTime
+  wholesalePrice     Decimal           @db.Decimal(10, 2)
+  previousPrice      Decimal?          @db.Decimal(10, 2)
+  priceChangeAmount  Decimal?          @db.Decimal(10, 2)
+  priceChangePercent Decimal?          @db.Decimal(5, 2)
+  changeReason       PriceChangeReason?
+  createdAt          DateTime          @default(now())
+
+  product    Product    @relation(fields: [productId], references: [id])
+  wholesaler Wholesaler @relation(fields: [wholesalerId], references: [id])
+
+  @@map("price_history")
+}
+
+model CartItem {
+  id           String  @id @default(cuid())
+  retailerId   String
+  productId    String
+  wholesalerId String
+  quantity     Int
+  unitPrice    Decimal @db.Decimal(10, 2)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  retailer Retailer @relation(fields: [retailerId], references: [id])
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@unique([retailerId, productId, wholesalerId])
+  @@map("cart_items")
+}
+
+model Order {
+  id                String        @id @default(cuid())
+  orderId           String        @unique @default(cuid())
+  orderNumber       String        @unique
+  retailerId        String
+  wholesalerId      String
+  userId            String
+  orderStatus       OrderStatus   @default(PENDING)
+  paymentStatus     PaymentStatus @default(PENDING)
+  paymentMethod     String?
+  orderDate         DateTime      @default(now())
+  subtotalAmount    Decimal       @db.Decimal(10, 2)
+  taxAmount         Decimal       @db.Decimal(10, 2) @default(0)
+  shippingAmount    Decimal       @db.Decimal(10, 2) @default(0)
+  discountAmount    Decimal       @db.Decimal(10, 2) @default(0)
+  totalAmount       Decimal       @db.Decimal(10, 2)
+  shippingCarrier   String?
+  trackingNumber    String?
+  shipToAddress     String?
+  shipToCity        String?
+  shipToState       String?
+  shipToZip         String?
+  orderNotes        String?
+  cancellationReason String?
+  totalItems        Int           @default(0)
+  totalUnits        Int           @default(0)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  retailer   Retailer   @relation(fields: [retailerId], references: [id])
+  wholesaler Wholesaler @relation(fields: [wholesalerId], references: [id])
+  user       User       @relation(fields: [userId], references: [id])
+  lines      OrderLine[]
+
+  @@map("orders")
+}
+
+model OrderLine {
+  id                String     @id @default(cuid())
+  orderId           String
+  lineNumber        Int
+  productId         String
+  sku               String
+  productName       String
+  quantityOrdered   Int
+  quantityShipped   Int        @default(0)
+  quantityCancelled Int        @default(0)
+  unitPrice         Decimal    @db.Decimal(10, 2)
+  lineSubtotal      Decimal    @db.Decimal(10, 2)
+  lineTax           Decimal    @db.Decimal(10, 2) @default(0)
+  lineTotal         Decimal    @db.Decimal(10, 2)
+  lineStatus        LineStatus @default(PENDING)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  order   Order   @relation(fields: [orderId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("order_lines")
+}
+
+model InventoryReceipt {
+  id                  String        @id @default(cuid())
+  receiptNumber       String        @unique
+  supplierId          String?
+  poNumber            String?
+  documentType        String?       // ASN, INVOICE, PO_CONFIRM
+  sourceChannel       String?       // EMAIL, FILE, API_WEBHOOK, MANUAL
+  carrier             String?
+  trackingNumber      String?
+  shipDate            DateTime?
+  expectedDate        DateTime?
+  receivedDate        DateTime?
+  status              ReceiptStatus @default(PENDING_DOCUMENT)
+  totalLinesExpected  Int           @default(0)
+  totalLinesReceived  Int           @default(0)
+  totalQtyExpected    Int           @default(0)
+  totalQtyReceived    Int           @default(0)
+  discrepancyCount    Int           @default(0)
+  rawDocumentUrl      String?
+  notes               String?
+  completedBy         String?
+  completedAt         DateTime?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  lines              ReceiptLine[]
+  scans              ReceiptScan[]
+  discrepancies      Discrepancy[]
+  documentExtractions DocumentExtraction[]
+
+  @@map("inventory_receipts")
+}
+
+model ReceiptLine {
+  id           String            @id @default(cuid())
+  receiptId    String
+  lineNumber   Int
+  productId    String?
+  sku          String?
+  upc          String?
+  productName  String
+  qtyExpected  Int
+  qtyReceived  Int               @default(0)
+  qtyDamaged   Int               @default(0)
+  unitCost     Decimal?          @db.Decimal(10, 2)
+  condition    ItemCondition     @default(PENDING)
+  lineStatus   ReceiptLineStatus @default(PENDING)
+  notes        String?
+  photoUrls    Json?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  receipt InventoryReceipt @relation(fields: [receiptId], references: [id])
+  product Product?         @relation(fields: [productId], references: [id])
+
+  @@map("receipt_lines")
+}
+
+model ReceiptScan {
+  id              String    @id @default(cuid())
+  receiptId       String
+  userId          String
+  barcode         String
+  barcodeType     String?
+  productId       String?
+  scannedQty      Int       @default(1)
+  condition       String?   @default("GOOD")
+  scanTimestamp   DateTime  @default(now())
+  syncedFromOffline Boolean @default(false)
+
+  receipt InventoryReceipt @relation(fields: [receiptId], references: [id])
+  user    User             @relation(fields: [userId], references: [id])
+
+  @@map("receipt_scans")
+}
+
+model Discrepancy {
+  id             String                 @id @default(cuid())
+  receiptId      String
+  type           DiscrepancyType
+  productName    String?
+  sku            String?
+  qtyExpected    Int?
+  qtyReceived    Int?
+  qtyVariance    Int?
+  photoUrls      Json?
+  notes          String?
+  resolution     DiscrepancyResolution?
+  resolvedBy     String?
+  resolvedAt     DateTime?
+  claimCreated   Boolean                @default(false)
+  claimAmount    Decimal?               @db.Decimal(10, 2)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  receipt InventoryReceipt @relation(fields: [receiptId], references: [id])
+
+  @@map("discrepancies")
+}
+
+model InventoryOnHand {
+  id               String   @id @default(cuid())
+  productId        String   @unique
+  quantityOnHand   Int      @default(0)
+  quantityReserved Int      @default(0)
+  quantityAvailable Int     @default(0)
+  reorderPoint     Int?
+  lastReceivedDate DateTime?
+  averageCost      Decimal? @db.Decimal(10, 2)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("inventory_on_hand")
+}
+
+model InventoryTransaction {
+  id              String          @id @default(cuid())
+  productId       String
+  transactionType TransactionType
+  quantity        Int             // positive or negative
+  unitCost        Decimal?        @db.Decimal(10, 2)
+  referenceType   String?         // ORDER, RECEIPT, MANUAL
+  referenceId     String?
+  notes           String?
+  createdBy       String?
+  createdAt       DateTime        @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("inventory_transactions")
+}
+
+model SearchLog {
+  id              String   @id @default(cuid())
+  userId          String?
+  searchTerm      String
+  category        String?
+  filters         Json?
+  resultsCount    Int      @default(0)
+  clickedProductId String?
+  addedToCart      Boolean  @default(false)
+  searchedAt      DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("search_logs")
+}
+
+model AuditEvent {
+  id            String   @id @default(cuid())
+  timestamp     DateTime @default(now())
+  actorId       String?
+  actorType     String   // USER, SYSTEM, WEBHOOK, ETL, CRON
+  actorIp       String?
+  action        String   // CREATE, UPDATE, DELETE, STATUS_CHANGE, LOGIN, SEARCH, EXPORT
+  entityType    String   // ORDER, PRODUCT, RECEIPT, USER, PRICING
+  entityId      String
+  previousState Json?
+  newState      Json?
+  changedFields String[]
+  reason        String?
+  metadata      Json?
+  traceId       String?
+  parentEventId String?
+
+  @@index([entityType, entityId])
+  @@index([actorId, timestamp])
+  @@index([action, timestamp])
+  @@index([traceId])
+  @@map("audit_events")
+}
+
+model DataLineage {
+  id                    String        @id @default(cuid())
+  entityType            String
+  entityId              String
+  sourceType            String
+  sourceId              String?
+  sourceUrl             String?
+  transformationType    String
+  transformationDetails Json?
+  evidenceType          String?
+  evidenceUrl           String?
+  evidenceHash          String?
+  parentLineageId       String?
+  parentLineage         DataLineage?  @relation("LineageChain", fields: [parentLineageId], references: [id])
+  childLineage          DataLineage[] @relation("LineageChain")
+  createdBy             String
+  createdAt             DateTime      @default(now())
+
+  @@index([entityType, entityId])
+  @@index([sourceType, sourceId])
+  @@map("data_lineage")
+}
+
+model EvaluationRun {
+  id             String    @id @default(cuid())
+  runName        String
+  evaluationType String
+  startedAt      DateTime  @default(now())
+  completedAt    DateTime?
+  config         Json
+  totalSamples   Int
+  accuracy       Decimal?  @db.Decimal(5, 4)
+  precision      Decimal?  @db.Decimal(5, 4)
+  recall         Decimal?  @db.Decimal(5, 4)
+  f1Score        Decimal?  @db.Decimal(5, 4)
+  metrics        Json
+
+  results EvaluationResult[]
+
+  @@map("evaluation_runs")
+}
+
+model EvaluationResult {
+  id             String        @id @default(cuid())
+  runId          String
+  run            EvaluationRun @relation(fields: [runId], references: [id])
+  inputData      Json
+  expectedOutput Json
+  actualOutput   Json
+  isCorrect      Boolean
+  errorType      String?
+  errorDetail    String?
+  fieldResults   Json?
+  createdAt      DateTime      @default(now())
+
+  @@map("evaluation_results")
+}
+
+// ─── ENTERPRISE MODELS ───
+
+model PromptTemplate {
+  id                 String   @id @default(cuid())
+  name               String
+  version            String
+  systemPrompt       String   @db.Text
+  userPromptTemplate String   @db.Text
+  model              String   @default("anthropic.claude-3-sonnet-20240229-v1:0")
+  temperature        Float    @default(0)
+  maxTokens          Int      @default(4096)
+  tags               String[]
+  isActive           Boolean  @default(true)
+  isDefault          Boolean  @default(false)
+  createdBy          String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([name, version])
+  @@map("prompt_templates")
+}
+
+model LLMInvocation {
+  id            String   @id @default(cuid())
+  promptName    String
+  promptVersion String?
+  model         String
+  inputTokens   Int      @default(0)
+  outputTokens  Int      @default(0)
+  totalTokens   Int      @default(0)
+  latencyMs     Int      @default(0)
+  cost          Decimal  @db.Decimal(10, 6) @default(0)
+  success       Boolean  @default(true)
+  error         String?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  @@index([promptName, createdAt])
+  @@index([model, createdAt])
+  @@map("llm_invocations")
+}
+
+model ABTest {
+  id           String    @id @default(cuid())
+  name         String    @unique
+  promptName   String
+  variantA     String
+  variantB     String
+  trafficSplit Float     @default(0.5)
+  status       String    @default("RUNNING") // RUNNING, PAUSED, COMPLETED
+  startedAt    DateTime  @default(now())
+  completedAt  DateTime?
+  winner       String?
+  metrics      Json?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  results ABTestResult[]
+
+  @@map("ab_tests")
+}
+
+model ABTestResult {
+  id        String   @id @default(cuid())
+  testId    String
+  variant   String
+  requestId String
+  success   Boolean  @default(true)
+  metrics   Json?
+  createdAt DateTime @default(now())
+
+  test ABTest @relation(fields: [testId], references: [id])
+
+  @@index([testId, variant])
+  @@map("ab_test_results")
+}
+
+model CorrectionRecord {
+  id             String   @id @default(cuid())
+  entityType     String   // EXTRACTION, SEARCH, ANOMALY
+  entityId       String
+  fieldName      String
+  originalValue  String
+  correctedValue String
+  correctedBy    String
+  feedbackType   String   // FALSE_POSITIVE, FALSE_NEGATIVE, WRONG_VALUE, MISSING_VALUE
+  createdAt      DateTime @default(now())
+
+  @@index([entityType, createdAt])
+  @@index([feedbackType])
+  @@map("correction_records")
+}
+
+model AnomalyRecord {
+  id             String    @id @default(cuid())
+  type           String    // PRICING_ZSCORE, PRICE_SPIKE, LARGE_ORDER, etc.
+  severity       String    // LOW, MEDIUM, HIGH, CRITICAL
+  entityType     String
+  entityId       String
+  description    String    @db.Text
+  metadata       Json?
+  isFalsePositive Boolean  @default(false)
+  resolvedBy     String?
+  resolvedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([severity, createdAt])
+  @@index([type, entityType])
+  @@map("anomaly_records")
+}
+
+model ThresholdConfig {
+  id                 String    @id @default(cuid())
+  metricName         String    @unique
+  currentValue       Float
+  minValue           Float     @default(0)
+  maxValue           Float     @default(10)
+  falsePositiveCount Int       @default(0)
+  falseNegativeCount Int       @default(0)
+  lastTunedAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@map("threshold_configs")
+}
+
+model DocumentExtraction {
+  id              String    @id @default(cuid())
+  documentName    String
+  documentUrl     String?
+  documentText    String    @db.Text
+  extractedData   Json?
+  confidence      Json?
+  status          String    @default("PENDING_REVIEW") // PENDING_REVIEW, APPROVED, REJECTED, AUTO_ACCEPTED
+  receiptId       String?
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  corrections     Json?
+  attempts        Int       @default(1)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  receipt InventoryReceipt? @relation(fields: [receiptId], references: [id])
+
+  @@index([status, createdAt])
+  @@map("document_extractions")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   // ORDER_UPDATE, PRICE_ALERT, STOCK_ALERT, SYSTEM, ANOMALY
+  title     String
+  message   String   @db.Text
+  isRead    Boolean  @default(false)
+  actionUrl String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, isRead, createdAt])
+  @@map("notifications")
+}

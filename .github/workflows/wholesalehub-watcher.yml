@@ -1,0 +1,209 @@
+name: WholesaleHub Watcher (Claude)
+
+# Runs Claude Code on a schedule + on-demand to review the repo and propose
+# small, focused improvements as DRAFT pull requests. Defaults to Sonnet for
+# cost control; you can dispatch with model=opus for a deeper pass.
+#
+# ────────────────────────────────────────────────────────────────────────
+# REQUIRED SECRET
+#   ANTHROPIC_API_KEY  — your Anthropic API key (https://console.anthropic.com)
+#                        Add at: Settings → Secrets and variables → Actions
+#
+# OPTIONAL SECRET
+#   CLAUDE_TRACKING_ISSUE — issue number (just the number, not the URL) where
+#                           every run posts a one-line summary comment so you
+#                           have a single mobile-friendly feed of activity.
+#                           Create the issue once, then add this secret.
+# ────────────────────────────────────────────────────────────────────────
+#
+# COST AT 10-MINUTE CADENCE  (rough, depends on prompt + repo growth)
+#   Sonnet: ~$0.20–$0.60 per run × 4320 runs/mo  ≈  $865–$2,600 / month
+#   Opus:   ~$0.65–$2.00 per run × 4320 runs/mo  ≈  $2,800–$8,640 / month
+#
+# Knobs to turn down cost (least → most aggressive):
+#   1. Switch the cron to */30 ('every 30 minutes')           → 3× cheaper
+#   2. Switch the cron to '0 * * * *' ('hourly')              → 6× cheaper
+#   3. Disable the schedule entirely; only run via dispatch    → ∞ cheaper
+#   4. Lower MAX_TURNS below to limit autonomy per run         → moderate
+#
+# WHAT THE AGENT IS ALLOWED TO DO
+#   - Read the repo + CLAUDE.md
+#   - Run lint / typecheck / tests
+#   - Open a DRAFT pull request when it finds something concrete
+#   - NOT push to main, NOT merge, NOT change schema without flagging it,
+#     NOT touch UI files (cannot validate without a browser).
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'Claude model'
+        required: true
+        default: 'claude-sonnet-4-6'
+        type: choice
+        options:
+          - 'claude-sonnet-4-6'
+          - 'claude-opus-4-7'
+          - 'claude-haiku-4-5-20251001'
+      prompt:
+        description: 'Override the default review prompt (leave blank for default)'
+        required: false
+        type: string
+      max_turns:
+        description: 'Max agent turns (caps autonomy + cost per run)'
+        required: false
+        default: '8'
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+# Don't pile up if a previous run is slow. Cancel queued duplicates.
+concurrency:
+  group: wholesalehub-watcher
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+          # We need a real token (not GITHUB_TOKEN) so the agent can push
+          # branches and open PRs that themselves trigger CI on the same repo.
+          # Using GITHUB_TOKEN is fine for branch push but PRs created with
+          # it will not trigger downstream workflow runs.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Skip if ANTHROPIC_API_KEY is missing
+        id: gate
+        env:
+          KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "ANTHROPIC_API_KEY not configured — skipping run."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node
+        if: steps.gate.outputs.skip == 'false'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        if: steps.gate.outputs.skip == 'false'
+        run: npm ci
+
+      - name: Generate Prisma client
+        if: steps.gate.outputs.skip == 'false'
+        run: npx prisma generate
+
+      - name: Configure git for the agent
+        if: steps.gate.outputs.skip == 'false'
+        run: |
+          git config user.name  "claude-watcher[bot]"
+          git config user.email "claude-watcher@users.noreply.github.com"
+
+      # ─── Run Claude Code ────────────────────────────────────────────────
+      # Uses the official anthropics/claude-code-action. Defaults are tuned
+      # for a conservative review cadence: small focused changes, draft PRs
+      # only, never push to main.
+      - name: Run Claude Code review
+        if: steps.gate.outputs.skip == 'false'
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          model: ${{ inputs.model || 'claude-sonnet-4-6' }}
+          max_turns: ${{ inputs.max_turns || '8' }}
+          # The prompt is the system + initial user message handed to Claude.
+          # Keep it terse — every token is billed every run.
+          prompt: |
+            ${{ inputs.prompt || '' }}
+
+            You are a code-review and improvement agent for the wholesalehub
+            repository. Read CLAUDE.md FIRST — it defines the project, its
+            conventions, and the roadmap.
+
+            Your job in this run:
+            1. Pull the latest main. Check `git log -10` for what shipped recently.
+            2. Look for ONE concrete, actionable improvement. Examples:
+               - A bug introduced by a recent change
+               - A drift from a CLAUDE.md convention
+               - A small missing test for already-shipped code
+               - A small TypeScript or Prisma issue
+               - A doc gap (e.g. an undocumented env var)
+               - The next-best item from the CLAUDE.md "Next, ordered by leverage" list
+                 — but ONLY if it can be shipped without UI changes or unrun migrations
+            3. If you find nothing, EXIT EARLY with a one-line "no actionable
+               findings this run" log. Do NOT open an empty PR. Do NOT
+               refactor things just to fill the run.
+            4. If you find something:
+               - Create a feature branch named `claude/<short-slug>-<run-id>`
+               - Commit a focused change. No sweeping refactors.
+               - Run `npm run lint`, `npm run typecheck`, `npm test`. If any fail,
+                 fix and re-run. If you can't fix in this run, abandon — do not
+                 ship broken code.
+               - Push the branch with `git push -u origin <branch>`.
+               - Open a DRAFT pull request via `gh pr create --draft`. Title
+                 should be conventional-commits style. Body should explain
+                 WHY (the underlying issue), WHAT (the change), and TESTS
+                 (what you ran + what passed). Link to CLAUDE.md sections
+                 that motivated the change.
+               - DO NOT mark the PR ready-for-review. DO NOT merge.
+
+            Hard rules:
+            - Never push to main, never merge a PR.
+            - Never change `prisma/schema.prisma` unless you're prepared to
+              also generate the migration AND clearly flag it in the PR.
+            - Never touch UI files (anything under `src/app/(dashboard)/**`,
+              `src/app/(auth)/**`, or `src/components/**`) — these need
+              browser validation you cannot do in CI.
+            - Never delete files without strong evidence they're unused.
+            - Never disable a test or rule to make CI green.
+            - Cap your work at one focused change per run.
+
+            Available tools: Read, Write, Edit, Glob, Grep, Bash. The repo
+            is fully checked out. You can run `gh` (already authenticated).
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ─── Optional: post a one-line summary to a tracking issue ─────────
+      - name: Post run summary to tracking issue
+        if: |
+          steps.gate.outputs.skip == 'false' &&
+          env.CLAUDE_TRACKING_ISSUE != ''
+        env:
+          CLAUDE_TRACKING_ISSUE: ${{ secrets.CLAUDE_TRACKING_ISSUE }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          STATUS="${{ job.status }}"
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          # Find any draft PRs the agent just opened on this repo.
+          PRS=$(gh pr list --search "is:open is:draft head:claude/" --json number,title,url --jq '.[] | "#\(.number) \(.title)"' | head -3 || echo "")
+          BODY="**Run** ${RUN_URL} • **Status** ${STATUS}"
+          if [ -n "$PRS" ]; then
+            BODY="$BODY"$'\n\n'"Drafts:"$'\n'"$PRS"
+          fi
+          gh issue comment "$CLAUDE_TRACKING_ISSUE" --body "$BODY" || true
+
+      - name: Skip notice
+        if: steps.gate.outputs.skip == 'true'
+        run: |
+          {
+            echo "## Skipped"
+            echo ""
+            echo "ANTHROPIC_API_KEY secret is not configured."
+            echo ""
+            echo "Add it at: https://github.com/${{ github.repository }}/settings/secrets/actions"
+          } >> "$GITHUB_STEP_SUMMARY"

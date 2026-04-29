@@ -1,20 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { auth } from '@/lib/auth';
+import { getAuthedUser } from '@/lib/session';
 import { addToCartSchema } from '@/lib/validators';
 import { logger } from '@/lib/logger';
 
 /** GET /api/cart — Get current user's cart items grouped by supplier */
 export async function GET() {
   try {
-    const session = await auth();
-    if (!session?.user) {
+    const user = await getAuthedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = session.user as Record<string, unknown>;
-    const retailerId = user.retailerId as string;
-
+    const retailerId = user.retailerId;
     if (!retailerId) {
       return NextResponse.json({ error: 'Only retailers can have a cart' }, { status: 403 });
     }
@@ -29,43 +27,56 @@ export async function GET() {
       orderBy: { createdAt: 'desc' },
     });
 
-    // Get supplier details and MOQ info for each item
-    const enrichedItems = await Promise.all(
-      cartItems.map(async (item) => {
-        const pricing = await prisma.productPricing.findUnique({
-          where: {
-            productId_wholesalerId: {
-              productId: item.productId,
-              wholesalerId: item.wholesalerId,
-            },
-          },
-          include: { wholesaler: true },
-        });
+    if (cartItems.length === 0) {
+      return NextResponse.json({
+        groups: [],
+        summary: { totalItems: 0, totalAmount: 0, allMoqMet: true },
+      });
+    }
 
-        return {
-          ...item,
-          unitPrice: Number(item.unitPrice),
-          wholesalerName: pricing?.wholesaler.name || 'Unknown',
-          wholesalerCity: pricing?.wholesaler.city || '',
-          wholesalerState: pricing?.wholesaler.state || '',
-          moqRequired: pricing?.minimumOrderQty || 1,
-          moqMet: item.quantity >= (pricing?.minimumOrderQty || 1),
-          stockStatus: pricing?.stockStatus || 'OUT_OF_STOCK',
-          subtotal: Number(item.unitPrice) * item.quantity,
-        };
-      })
+    // Single batched lookup instead of N+1.
+    const pricingPairs = cartItems.map((i) => ({
+      productId: i.productId,
+      wholesalerId: i.wholesalerId,
+    }));
+
+    const pricings = await prisma.productPricing.findMany({
+      where: { OR: pricingPairs },
+      include: { wholesaler: true },
+    });
+
+    const pricingByKey = new Map(
+      pricings.map((p) => [`${p.productId}:${p.wholesalerId}`, p]),
     );
 
-    // Group by supplier
-    const grouped: Record<string, {
+    const enrichedItems = cartItems.map((item) => {
+      const pricing = pricingByKey.get(`${item.productId}:${item.wholesalerId}`);
+      const moqRequired = pricing?.minimumOrderQty ?? 1;
+      return {
+        ...item,
+        unitPrice: Number(item.unitPrice),
+        wholesalerName: pricing?.wholesaler.name ?? 'Unknown',
+        wholesalerCity: pricing?.wholesaler.city ?? '',
+        wholesalerState: pricing?.wholesaler.state ?? '',
+        moqRequired,
+        moqMet: item.quantity >= moqRequired,
+        stockStatus: pricing?.stockStatus ?? 'OUT_OF_STOCK',
+        subtotal: Number(item.unitPrice) * item.quantity,
+      };
+    });
+
+    type EnrichedItem = (typeof enrichedItems)[number];
+    type Group = {
       wholesalerId: string;
       wholesalerName: string;
       city: string;
       state: string;
-      items: typeof enrichedItems;
+      items: EnrichedItem[];
       subtotal: number;
       allMoqMet: boolean;
-    }> = {};
+    };
+
+    const grouped: Record<string, Group> = {};
 
     for (const item of enrichedItems) {
       if (!grouped[item.wholesalerId]) {
@@ -107,14 +118,12 @@ export async function GET() {
 /** POST /api/cart — Add item to cart */
 export async function POST(request: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user) {
+    const user = await getAuthedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = session.user as Record<string, unknown>;
-    const retailerId = user.retailerId as string;
-
+    const retailerId = user.retailerId;
     if (!retailerId) {
       return NextResponse.json({ error: 'Only retailers can add to cart' }, { status: 403 });
     }
@@ -131,39 +140,56 @@ export async function POST(request: NextRequest) {
 
     const { productId, wholesalerId, quantity } = validation.data;
 
-    // Verify product and pricing exist
-    const pricing = await prisma.productPricing.findUnique({
-      where: {
-        productId_wholesalerId: { productId, wholesalerId },
-      },
-      include: { product: true, wholesaler: true },
+    // Pricing fetch + stock + MOQ check + upsert in one transaction so
+    // stock state cannot drift between the validation read and the write.
+    const result = await prisma.$transaction(async (tx) => {
+      const pricing = await tx.productPricing.findUnique({
+        where: {
+          productId_wholesalerId: { productId, wholesalerId },
+        },
+        include: { product: true, wholesaler: true },
+      });
+
+      if (!pricing || !pricing.isActive) {
+        return { ok: false as const, status: 404, body: { error: 'Product pricing not found' } };
+      }
+
+      if (pricing.stockStatus === 'OUT_OF_STOCK') {
+        return { ok: false as const, status: 400, body: { error: 'Product is out of stock' } };
+      }
+
+      if (quantity < pricing.minimumOrderQty) {
+        return {
+          ok: false as const,
+          status: 400,
+          body: {
+            error: `Minimum order is ${pricing.minimumOrderQty} units`,
+            minimumOrderQty: pricing.minimumOrderQty,
+          },
+        };
+      }
+
+      const unitPrice =
+        pricing.onPromotion && pricing.promoPrice ? pricing.promoPrice : pricing.wholesalePrice;
+
+      const cartItem = await tx.cartItem.upsert({
+        where: {
+          retailerId_productId_wholesalerId: { retailerId, productId, wholesalerId },
+        },
+        update: { quantity, unitPrice },
+        create: { retailerId, productId, wholesalerId, quantity, unitPrice },
+      });
+
+      return {
+        ok: true as const,
+        cartItem,
+        productName: pricing.product.name,
+      };
     });
 
-    if (!pricing || !pricing.isActive) {
-      return NextResponse.json({ error: 'Product pricing not found' }, { status: 404 });
+    if (!result.ok) {
+      return NextResponse.json(result.body, { status: result.status });
     }
-
-    if (pricing.stockStatus === 'OUT_OF_STOCK') {
-      return NextResponse.json({ error: 'Product is out of stock' }, { status: 400 });
-    }
-
-    // Upsert cart item
-    const cartItem = await prisma.cartItem.upsert({
-      where: {
-        retailerId_productId_wholesalerId: { retailerId, productId, wholesalerId },
-      },
-      update: {
-        quantity,
-        unitPrice: pricing.onPromotion && pricing.promoPrice ? pricing.promoPrice : pricing.wholesalePrice,
-      },
-      create: {
-        retailerId,
-        productId,
-        wholesalerId,
-        quantity,
-        unitPrice: pricing.onPromotion && pricing.promoPrice ? pricing.promoPrice : pricing.wholesalePrice,
-      },
-    });
 
     logger.info({
       event: 'cart_item_added',
@@ -174,11 +200,8 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({
-      cartItem,
-      message: `${pricing.product.name} added to cart`,
-      moqWarning: quantity < pricing.minimumOrderQty
-        ? `Minimum order is ${pricing.minimumOrderQty} units`
-        : null,
+      cartItem: result.cartItem,
+      message: `${result.productName} added to cart`,
     });
   } catch (error) {
     logger.error({ event: 'cart_add_error', error: (error as Error).message });
@@ -189,9 +212,14 @@ export async function POST(request: NextRequest) {
 /** DELETE /api/cart — Remove item from cart */
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user) {
+    const user = await getAuthedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const retailerId = user.retailerId;
+    if (!retailerId) {
+      return NextResponse.json({ error: 'Only retailers can modify a cart' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -201,7 +229,15 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Item ID required' }, { status: 400 });
     }
 
-    await prisma.cartItem.delete({ where: { id: itemId } });
+    // deleteMany with retailerId scoped — ensures a user cannot delete
+    // another retailer's cart item by guessing/iterating IDs.
+    const deleted = await prisma.cartItem.deleteMany({
+      where: { id: itemId, retailerId },
+    });
+
+    if (deleted.count === 0) {
+      return NextResponse.json({ error: 'Cart item not found' }, { status: 404 });
+    }
 
     return NextResponse.json({ message: 'Item removed from cart' });
   } catch (error) {

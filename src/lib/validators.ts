@@ -55,14 +55,23 @@ export const checkoutSchema = z.object({
   orderNotes: z.string().optional(),
 });
 
+export const stockStatusEnum = z.enum([
+  'IN_STOCK',
+  'LOW_STOCK',
+  'OUT_OF_STOCK',
+  'BACKORDER',
+]);
+
 export const productSearchSchema = z.object({
   q: z.string().optional(),
   category: z.string().optional(),
-  minPrice: z.coerce.number().optional(),
-  maxPrice: z.coerce.number().optional(),
-  stockStatus: z.string().optional(),
-  minRating: z.coerce.number().optional(),
-  sort: z.enum(['price_asc', 'price_desc', 'rating', 'newest', 'popular']).default('price_asc'),
+  minPrice: z.coerce.number().nonnegative().optional(),
+  maxPrice: z.coerce.number().nonnegative().optional(),
+  stockStatus: stockStatusEnum.optional(),
+  minRating: z.coerce.number().min(0).max(5).optional(),
+  sort: z
+    .enum(['price_asc', 'price_desc', 'rating', 'newest', 'popular', 'relevance'])
+    .default('relevance'),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(24),
 });
@@ -81,6 +90,35 @@ export const orderStatusUpdateSchema = z.object({
   cancellationReason: z.string().optional(),
 });
 
+/**
+ * Schema for ASN webhook payloads from suppliers. Validated AFTER HMAC
+ * passes — defends against compromised supplier API keys / malformed JSON.
+ */
+export const inventoryWebhookSchema = z.object({
+  supplier_id: z.string().min(1),
+  document_id: z.string().optional(),
+  po_number: z.string().optional(),
+  document_type: z.string().optional(),
+  carrier: z.string().optional(),
+  tracking_number: z.string().optional(),
+  ship_date: z.string().datetime().optional(),
+  expected_date: z.string().datetime().optional(),
+  line_items: z
+    .array(
+      z.object({
+        sku: z.string().min(1),
+        upc: z.string().optional(),
+        product_name: z.string().min(1),
+        quantity: z.number().int().nonnegative(),
+        unit_cost: z.number().nonnegative().optional(),
+      }),
+    )
+    .max(10000, 'Too many line items'),
+}).refine((p) => !!(p.po_number || p.document_id), {
+  message: 'Either po_number or document_id is required',
+  path: ['po_number'],
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type AddToCartInput = z.infer<typeof addToCartSchema>;
@@ -88,3 +126,5 @@ export type CheckoutInput = z.infer<typeof checkoutSchema>;
 export type ProductSearchInput = z.infer<typeof productSearchSchema>;
 export type BarcodeScanInput = z.infer<typeof barcodeScanSchema>;
 export type OrderStatusUpdateInput = z.infer<typeof orderStatusUpdateSchema>;
+export type InventoryWebhookPayload = z.infer<typeof inventoryWebhookSchema>;
+export type StockStatus = z.infer<typeof stockStatusEnum>;

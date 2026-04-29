@@ -4,7 +4,14 @@ on:
   push:
     branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
+  schedule:
+    # Nightly run at 07:00 UTC catches drift caused by upstream/transitive
+    # dep changes even when no PR is merged.
+    - cron: '0 7 * * *'
+
+permissions:
+  contents: read
 
 jobs:
   lint:
@@ -59,7 +66,39 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
-      - run: npm audit --production --audit-level=high || true
+      # `--production` excludes devDeps from the audit.
+      # We DO NOT swallow audit failures with `|| true` any more — high/
+      # critical vulnerabilities should block the merge.
+      - run: npm audit --omit=dev --audit-level=high
+
+  dependency-review:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['javascript-typescript']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          language: ${{ matrix.language }}
+          queries: security-extended
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:${{ matrix.language }}'
 
   build:
     runs-on: ubuntu-latest
@@ -71,6 +110,7 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
+      - run: npx prisma generate
       - run: npm run build
         env:
           DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder

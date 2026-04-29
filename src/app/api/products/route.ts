@@ -1,8 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { productSearchSchema } from '@/lib/validators';
 import { logger } from '@/lib/logger';
 import { getCache, setCache } from '@/lib/redis';
+
+/** Pick a representative stockStatus for a product across its supplier pricings. */
+function aggregateStockStatus(
+  pricings: Array<{ stockStatus: string }>,
+): 'IN_STOCK' | 'LOW_STOCK' | 'BACKORDER' | 'OUT_OF_STOCK' {
+  if (pricings.some((p) => p.stockStatus === 'IN_STOCK')) return 'IN_STOCK';
+  if (pricings.some((p) => p.stockStatus === 'LOW_STOCK')) return 'LOW_STOCK';
+  if (pricings.some((p) => p.stockStatus === 'BACKORDER')) return 'BACKORDER';
+  return 'OUT_OF_STOCK';
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -26,8 +37,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(cached);
     }
 
-    // Build where clause
-    const where: Record<string, unknown> = { status: 'ACTIVE' };
+    const where: Prisma.ProductWhereInput = { status: 'ACTIVE' };
 
     if (q) {
       where.OR = [
@@ -40,38 +50,62 @@ export async function GET(request: NextRequest) {
     }
 
     if (category) {
-      where.category = { OR: [{ categoryId: category }, { name: { equals: category, mode: 'insensitive' } }] };
+      where.category = {
+        is: {
+          OR: [
+            { categoryId: category },
+            { name: { equals: category, mode: 'insensitive' } },
+          ],
+        },
+      };
     }
 
     if (stockStatus) {
-      where.pricings = { some: { stockStatus: stockStatus, isActive: true } };
+      where.pricings = { some: { stockStatus, isActive: true } };
     }
 
-    // Get total count
-    const total = await prisma.product.count({ where: where as any });
-
-    // Get products with pricings
-    const products = await prisma.product.findMany({
-      where: where as any,
-      include: {
-        category: true,
-        pricings: {
-          where: { isActive: true },
-          include: { wholesaler: true },
-          orderBy: { wholesalePrice: 'asc' },
+    // Push min/max price into the SQL `where` so pagination total stays consistent
+    // with the filtered set instead of overshooting.
+    if (minPrice !== undefined || maxPrice !== undefined) {
+      const priceFilter: Prisma.DecimalFilter = {};
+      if (minPrice !== undefined) priceFilter.gte = minPrice;
+      if (maxPrice !== undefined) priceFilter.lte = maxPrice;
+      where.pricings = {
+        some: {
+          isActive: true,
+          wholesalePrice: priceFilter,
+          ...(stockStatus ? { stockStatus } : {}),
         },
-      },
-      skip: (page - 1) * limit,
-      take: limit,
-    });
+      };
+    }
 
-    // Transform products with pricing aggregates
+    const [total, products, categories] = await Promise.all([
+      prisma.product.count({ where }),
+      prisma.product.findMany({
+        where,
+        include: {
+          category: true,
+          pricings: {
+            where: { isActive: true },
+            include: { wholesaler: true },
+            orderBy: { wholesalePrice: 'asc' },
+          },
+        },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.category.findMany({
+        where: { status: 'ACTIVE', level: 1 },
+        include: { _count: { select: { products: { where: { status: 'ACTIVE' } } } } },
+        orderBy: { displayOrder: 'asc' },
+      }),
+    ]);
+
     let productResults = products.map((product) => {
       const activePricings = product.pricings.filter((p) => {
-        let include = true;
-        if (minPrice !== undefined) include = include && Number(p.wholesalePrice) >= minPrice;
-        if (maxPrice !== undefined) include = include && Number(p.wholesalePrice) <= maxPrice;
-        return include;
+        if (minPrice !== undefined && Number(p.wholesalePrice) < minPrice) return false;
+        if (maxPrice !== undefined && Number(p.wholesalePrice) > maxPrice) return false;
+        return true;
       });
 
       const prices = activePricings.map((p) => Number(p.wholesalePrice));
@@ -94,11 +128,7 @@ export async function GET(request: NextRequest) {
         highestPrice,
         supplierCount: activePricings.length,
         avgRating: bestPricing?.wholesaler ? Number(bestPricing.wholesaler.ratingAvg) || 0 : 0,
-        stockStatus: activePricings.some((p) => p.stockStatus === 'IN_STOCK')
-          ? 'IN_STOCK'
-          : activePricings.some((p) => p.stockStatus === 'LOW_STOCK')
-            ? 'LOW_STOCK'
-            : 'OUT_OF_STOCK',
+        stockStatus: aggregateStockStatus(activePricings),
         bestSupplier: bestPricing
           ? {
               name: bestPricing.wholesaler.name,
@@ -111,20 +141,12 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // Filter by min price / max price at product level
-    if (minPrice !== undefined) {
-      productResults = productResults.filter((p) => p.lowestPrice >= minPrice);
-    }
-    if (maxPrice !== undefined) {
-      productResults = productResults.filter((p) => p.lowestPrice <= maxPrice);
-    }
-
-    // Filter by rating
+    // Rating filter is still in-memory — the rating is derived from the
+    // best supplier, which we only know after enriching.
     if (minRating !== undefined) {
       productResults = productResults.filter((p) => p.avgRating >= minRating);
     }
 
-    // Sort
     switch (sort) {
       case 'price_asc':
         productResults.sort((a, b) => a.lowestPrice - b.lowestPrice);
@@ -140,14 +162,11 @@ export async function GET(request: NextRequest) {
       case 'popular':
         productResults.sort((a, b) => b.supplierCount - a.supplierCount);
         break;
+      case 'relevance':
+        // /api/products is keyword-only; relevance falls back to price asc.
+        productResults.sort((a, b) => a.lowestPrice - b.lowestPrice);
+        break;
     }
-
-    // Get category counts
-    const categories = await prisma.category.findMany({
-      where: { status: 'ACTIVE', level: 1 },
-      include: { _count: { select: { products: { where: { status: 'ACTIVE' } } } } },
-      orderBy: { displayOrder: 'asc' },
-    });
 
     const response = {
       products: productResults,
@@ -164,7 +183,6 @@ export async function GET(request: NextRequest) {
       })),
     };
 
-    // Cache for 5 minutes
     await setCache(cacheKey, response, 300);
 
     logger.info({

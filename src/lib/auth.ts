@@ -3,6 +3,7 @@ import Credentials from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import { prisma } from './prisma';
 import { logger } from './logger';
+import { rateLimit } from './rate-limit';
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
@@ -12,13 +13,38 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         if (!credentials?.email || !credentials?.password) {
           return null;
         }
 
-        const email = credentials.email as string;
+        const email = (credentials.email as string).toLowerCase();
         const password = credentials.password as string;
+
+        // IP-level rate limit so an attacker cannot rotate emails to dodge
+        // the per-account lockout. 20 attempts per 5 minutes per IP.
+        const ip =
+          request?.headers?.get?.('x-forwarded-for')?.split(',')[0]?.trim() ||
+          request?.headers?.get?.('x-real-ip') ||
+          'unknown';
+        const ipLimit = await rateLimit({
+          key: `login:ip:${ip}`,
+          limit: 20,
+          windowSec: 300,
+        });
+        if (!ipLimit.ok) {
+          throw new Error('Too many sign-in attempts. Please try again later.');
+        }
+
+        // Per-email rate limit (prevents per-account hammering even before lockout fires).
+        const emailLimit = await rateLimit({
+          key: `login:email:${email}`,
+          limit: 10,
+          windowSec: 300,
+        });
+        if (!emailLimit.ok) {
+          throw new Error('Too many sign-in attempts. Please try again later.');
+        }
 
         const user = await prisma.user.findUnique({
           where: { email },
@@ -41,7 +67,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!isValid) {
           // Increment failed login count
           const failedCount = user.failedLoginCount + 1;
-          const updateData: Record<string, unknown> = { failedLoginCount: failedCount };
+          const updateData: { failedLoginCount: number; lockedUntil?: Date } = {
+            failedLoginCount: failedCount,
+          };
 
           // Lock after 5 failed attempts for 15 minutes
           if (failedCount >= 5) {
@@ -91,18 +119,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        token.role = (user as Record<string, unknown>).role;
-        token.retailerId = (user as Record<string, unknown>).retailerId;
-        token.wholesalerId = (user as Record<string, unknown>).wholesalerId;
+        token.role = user.role;
+        token.retailerId = user.retailerId;
+        token.wholesalerId = user.wholesalerId;
       }
       return token;
     },
     async session({ session, token }) {
-      if (session.user) {
-        (session.user as Record<string, unknown>).id = token.id;
-        (session.user as Record<string, unknown>).role = token.role;
-        (session.user as Record<string, unknown>).retailerId = token.retailerId;
-        (session.user as Record<string, unknown>).wholesalerId = token.wholesalerId;
+      if (session.user && token.id) {
+        session.user.id = token.id;
+        if (token.role) session.user.role = token.role;
+        session.user.retailerId = token.retailerId ?? null;
+        session.user.wholesalerId = token.wholesalerId ?? null;
       }
       return session;
     },

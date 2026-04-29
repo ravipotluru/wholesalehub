@@ -1,0 +1,140 @@
+name: Ops Dispatch
+
+# Single entry-point for ad-hoc ops tasks. You can trigger this from the
+# GitHub mobile app or web UI:
+#   GitHub → repo → Actions → "Ops Dispatch" → "Run workflow".
+# Pick the `action` input and (optionally) a `target_branch`. Output appears
+# in the run log and as a step summary.
+#
+# Designed so a single workflow covers the common things you'd want to run
+# on the go: re-run the audit, smoke-test, kick the license watcher, check
+# deps, ping prod health.
+#
+# Required secrets (only for the actions that need them):
+#   DATABASE_URL           — for license-check
+#   PROD_HEALTH_URL        — for health-ping (e.g. https://app.example.com/api/health)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Operation to run'
+        required: true
+        type: choice
+        options:
+          - tests
+          - audit
+          - license-check
+          - deps-check
+          - health-ping
+      target_branch:
+        description: 'Branch to operate on (default: main)'
+        required: false
+        default: 'main'
+        type: string
+      notes:
+        description: 'Free-form notes (shows in the run summary)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_branch }}
+
+      - name: Record dispatch context
+        run: |
+          {
+            echo "## Ops Dispatch"
+            echo ""
+            echo "- **Action:** ${{ inputs.action }}"
+            echo "- **Branch:** ${{ inputs.target_branch }}"
+            echo "- **Triggered by:** ${{ github.actor }}"
+            echo "- **Notes:** ${{ inputs.notes || '_none_' }}"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/setup-node@v4
+        if: inputs.action != 'health-ping'
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install deps
+        if: inputs.action != 'health-ping'
+        run: npm ci
+
+      # ─── tests ─────────────────────────────────────────────────────────
+      - name: Run lint + typecheck + tests
+        if: inputs.action == 'tests'
+        run: |
+          npm run lint
+          npm run typecheck
+          npm test -- --coverage
+
+      # ─── audit ─────────────────────────────────────────────────────────
+      # Static-only re-run of the audit pipeline that lives in CI.
+      - name: Run static audit (lint + typecheck + audit)
+        if: inputs.action == 'audit'
+        run: |
+          npm run lint
+          npm run typecheck
+          npm audit --omit=dev --audit-level=high || echo "::warning::npm audit found high-severity issues"
+
+      # ─── license-check ─────────────────────────────────────────────────
+      - name: Generate Prisma client
+        if: inputs.action == 'license-check'
+        run: npx prisma generate
+
+      - name: Run license expiry watcher
+        if: inputs.action == 'license-check'
+        run: npx tsx scripts/cron/license-expiry-check.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          LOG_LEVEL: info
+
+      # ─── deps-check ────────────────────────────────────────────────────
+      - name: Outdated dependencies report
+        if: inputs.action == 'deps-check'
+        run: |
+          {
+            echo "### Outdated packages"
+            echo ""
+            echo '```'
+            npm outdated || true
+            echo '```'
+            echo ""
+            echo "### npm audit (production deps)"
+            echo '```'
+            npm audit --omit=dev --audit-level=low --json | npx --yes json-summary 2>/dev/null || npm audit --omit=dev --audit-level=low || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ─── health-ping ───────────────────────────────────────────────────
+      - name: Ping production health endpoint
+        if: inputs.action == 'health-ping'
+        run: |
+          URL="${{ secrets.PROD_HEALTH_URL }}"
+          if [ -z "$URL" ]; then
+            echo "::error::PROD_HEALTH_URL secret is not configured"
+            exit 1
+          fi
+          STATUS=$(curl -s -o /tmp/health.json -w "%{http_code}" "$URL")
+          {
+            echo "### Health probe"
+            echo ""
+            echo "- HTTP status: \`$STATUS\`"
+            echo ""
+            echo '```json'
+            cat /tmp/health.json
+            echo ''
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$STATUS" != "200" ]; then exit 1; fi

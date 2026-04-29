@@ -1,0 +1,35 @@
+name: License Expiry Watcher
+
+# Runs daily at 04:00 UTC. Suspends wholesalers whose license has expired
+# and posts in-app notifications at 30/14/7 days out from expiry.
+#
+# Required secret: DATABASE_URL — the production Postgres connection string
+# (with read+write access to wholesalers, users, notifications).
+#
+# This is also exposed via workflow_dispatch so an operator can run it
+# manually after onboarding a new supplier or fixing license dates.
+
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx tsx scripts/cron/license-expiry-check.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          LOG_LEVEL: info

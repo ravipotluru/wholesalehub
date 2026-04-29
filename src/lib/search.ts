@@ -339,7 +339,8 @@ async function enrichProductResults(
     include: {
       category: true,
       pricings: {
-        where: { isActive: true },
+        // PUBLIC-only until WholesalerBuyerApproval is wired.
+        where: { isActive: true, visibility: 'PUBLIC' },
         include: { wholesaler: true },
         orderBy: { wholesalePrice: 'asc' },
       },

@@ -5,6 +5,13 @@ import { getAuthedUser } from '@/lib/session';
 import { checkoutSchema } from '@/lib/validators';
 import { logger } from '@/lib/logger';
 import { generateOrderNumber } from '@/lib/utils';
+import {
+  readIdempotencyKey,
+  hashRequestBody,
+  checkIdempotency,
+  storeIdempotentResponse,
+} from '@/lib/idempotency';
+import { selectUnitPrice } from '@/lib/pricing';
 
 const TAX_RATE = new Prisma.Decimal('0.0825');
 const ZERO = new Prisma.Decimal(0);
@@ -98,6 +105,13 @@ function computeLineTotals(unitPrice: Prisma.Decimal, quantity: number) {
   return { lineSubtotal, lineTax, lineTotal };
 }
 
+/**
+ * Order statuses that DO NOT count toward open AR. We exclude only
+ * CANCELLED and REJECTED here — DELIVERED orders on Net30/Net60 terms are
+ * still outstanding receivables until paymentStatus flips to PAID.
+ */
+const NON_AR_STATUSES = ['CANCELLED', 'REJECTED'] as const;
+
 /** POST /api/orders — Create orders from cart (splits per supplier) */
 export async function POST(request: NextRequest) {
   try {
@@ -125,9 +139,47 @@ export async function POST(request: NextRequest) {
 
     const { shippingAddress, shippingCity, shippingState, shippingZip, paymentMethod, orderNotes } = validation.data;
 
-    // Whole flow in one transaction: read cart, validate MOQ via batched
-    // pricing fetch, create per-supplier orders with lines, clear cart.
-    // Either all succeed or none persist.
+    // ─── Idempotency replay ─────────────────────────────────────────────
+    // If the client sends `Idempotency-Key`, replay any cached response
+    // from a prior identical attempt within the TTL. Doing this BEFORE the
+    // transaction means a retry never re-runs the cart/credit logic.
+    const idempotencyKey = readIdempotencyKey(request);
+    const idempotencyScope = `POST /api/orders:${retailerId}`;
+    const idempotencyHash = idempotencyKey ? hashRequestBody(validation.data) : null;
+
+    if (idempotencyKey && idempotencyHash) {
+      const outcome = await checkIdempotency(
+        prisma,
+        idempotencyScope,
+        idempotencyKey,
+        idempotencyHash,
+      );
+      if (outcome.kind === 'replay') {
+        logger.info({
+          event: 'orders_idempotent_replay',
+          retailerId,
+          idempotencyKey,
+        });
+        return NextResponse.json(outcome.cached.body, {
+          status: outcome.cached.statusCode,
+          headers: { 'Idempotent-Replay': 'true' },
+        });
+      }
+      if (outcome.kind === 'conflict') {
+        return NextResponse.json(
+          {
+            error:
+              'Idempotency-Key was reused with a different request body. ' +
+              'Generate a new key for a new request.',
+          },
+          { status: 409 },
+        );
+      }
+    }
+
+    // Whole flow in one transaction: read cart, validate MOQ + credit via
+    // batched fetches, create per-supplier orders with lines, clear cart,
+    // and persist the idempotency record. Either all succeed or none persist.
     const result = await prisma.$transaction(async (tx) => {
       const cartItems = await tx.cartItem.findMany({
         where: { retailerId },
@@ -146,19 +198,16 @@ export async function POST(request: NextRequest) {
       }
 
       // Single batched pricing lookup instead of N+1 inside a nested loop.
+      // We pull the full pricing + tier rows because checkout re-prices each
+      // line: tier discounts depend on the FINAL quantity, not the cart's
+      // stored unitPrice (which was set at the time of cart-add).
       const pricingPairs = cartItems.map((i) => ({
         productId: i.productId,
         wholesalerId: i.wholesalerId,
       }));
       const pricings = await tx.productPricing.findMany({
         where: { OR: pricingPairs },
-        select: {
-          productId: true,
-          wholesalerId: true,
-          minimumOrderQty: true,
-          stockStatus: true,
-          isActive: true,
-        },
+        include: { tiers: true },
       });
       const pricingByKey = new Map(
         pricings.map((p) => [`${p.productId}:${p.wholesalerId}`, p]),
@@ -196,6 +245,122 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Per-supplier totals (computed once, reused for both credit-limit
+      // check and the actual order create).
+      type SupplierTotals = {
+        wholesalerId: string;
+        items: typeof cartItems;
+        subtotal: Prisma.Decimal;
+        totalTax: Prisma.Decimal;
+        shipping: Prisma.Decimal;
+        total: Prisma.Decimal;
+        lineData: Array<{
+          lineNumber: number;
+          productId: string;
+          sku: string;
+          productName: string;
+          quantityOrdered: number;
+          unitPrice: Prisma.Decimal;
+          lineSubtotal: Prisma.Decimal;
+          lineTax: Prisma.Decimal;
+          lineTotal: Prisma.Decimal;
+        }>;
+      };
+
+      const supplierTotals: SupplierTotals[] = Object.entries(supplierGroups).map(
+        ([wholesalerId, items]) => {
+          let subtotal = ZERO;
+          let totalTax = ZERO;
+          const lineData = items.map((item, index) => {
+            // Re-price at checkout based on final quantity. The cart row's
+            // unitPrice is a snapshot from when the item was added; tiers
+            // and active promos can shift between then and checkout.
+            const pricing = pricingByKey.get(`${item.productId}:${item.wholesalerId}`);
+            const unitPrice = pricing
+              ? selectUnitPrice(
+                  {
+                    wholesalePrice: pricing.wholesalePrice,
+                    promoPrice: pricing.promoPrice,
+                    onPromotion: pricing.onPromotion,
+                    promoStartDate: pricing.promoStartDate,
+                    promoEndDate: pricing.promoEndDate,
+                  },
+                  pricing.tiers,
+                  item.quantity,
+                ).unitPrice
+              : new Prisma.Decimal(item.unitPrice.toString());
+
+            const { lineSubtotal, lineTax, lineTotal } = computeLineTotals(
+              unitPrice,
+              item.quantity,
+            );
+            subtotal = subtotal.add(lineSubtotal);
+            totalTax = totalTax.add(lineTax);
+            return {
+              lineNumber: index + 1,
+              productId: item.productId,
+              sku: item.product.sku,
+              productName: item.product.name,
+              quantityOrdered: item.quantity,
+              unitPrice,
+              lineSubtotal,
+              lineTax,
+              lineTotal,
+            };
+          });
+          const shipping = ZERO;
+          const total = subtotal.add(totalTax).add(shipping);
+          return { wholesalerId, items, subtotal, totalTax, shipping, total, lineData };
+        },
+      );
+
+      // ─── Credit limit enforcement ────────────────────────────────────
+      // If the retailer has a creditLimit, sum (open AR + this checkout)
+      // and reject when the proposed total would exceed it.
+      const retailer = await tx.retailer.findUnique({
+        where: { id: retailerId },
+        select: { creditLimit: true, businessName: true },
+      });
+
+      if (retailer?.creditLimit) {
+        // Open AR = unpaid receivables across all orders that haven't been
+        // cancelled/rejected. Both predicates apply: a DELIVERED + PAID
+        // order is fully closed; a DELIVERED + PENDING order is still owed.
+        const openArAgg = await tx.order.aggregate({
+          where: {
+            retailerId,
+            orderStatus: { notIn: [...NON_AR_STATUSES] },
+            paymentStatus: { notIn: ['PAID', 'REFUNDED'] },
+          },
+          _sum: { totalAmount: true },
+        });
+        const openAr = openArAgg._sum.totalAmount ?? new Prisma.Decimal(0);
+        const proposedTotal = supplierTotals.reduce(
+          (acc, s) => acc.add(s.total),
+          new Prisma.Decimal(0),
+        );
+        const projected = openAr.add(proposedTotal);
+
+        if (projected.greaterThan(retailer.creditLimit)) {
+          const available = Prisma.Decimal.max(
+            new Prisma.Decimal(0),
+            new Prisma.Decimal(retailer.creditLimit).sub(openAr),
+          );
+          return {
+            ok: false as const,
+            // 402 Payment Required is the right status when credit is the issue.
+            status: 402,
+            body: {
+              error: 'Order exceeds available credit limit',
+              creditLimit: Number(retailer.creditLimit),
+              openAr: Number(openAr),
+              orderTotal: Number(proposedTotal),
+              availableCredit: Number(available),
+            },
+          };
+        }
+      }
+
       // Create one order per supplier
       const createdOrders: Array<{
         orderId: string;
@@ -206,49 +371,26 @@ export async function POST(request: NextRequest) {
         itemCount: number;
       }> = [];
 
-      for (const [wholesalerId, items] of Object.entries(supplierGroups)) {
-        let subtotal = ZERO;
-        let totalTax = ZERO;
-        const lineData = items.map((item, index) => {
-          const unitPrice = new Prisma.Decimal(item.unitPrice.toString());
-          const { lineSubtotal, lineTax, lineTotal } = computeLineTotals(unitPrice, item.quantity);
-          subtotal = subtotal.add(lineSubtotal);
-          totalTax = totalTax.add(lineTax);
-          return {
-            lineNumber: index + 1,
-            productId: item.productId,
-            sku: item.product.sku,
-            productName: item.product.name,
-            quantityOrdered: item.quantity,
-            unitPrice,
-            lineSubtotal,
-            lineTax,
-            lineTotal,
-          };
-        });
-
-        const shipping = ZERO; // Free shipping for now
-        const total = subtotal.add(totalTax).add(shipping);
-
+      for (const s of supplierTotals) {
         const order = await tx.order.create({
           data: {
             orderNumber: generateOrderNumber(),
             retailerId,
-            wholesalerId,
+            wholesalerId: s.wholesalerId,
             userId,
             paymentMethod,
-            subtotalAmount: subtotal,
-            taxAmount: totalTax,
-            shippingAmount: shipping,
-            totalAmount: total,
+            subtotalAmount: s.subtotal,
+            taxAmount: s.totalTax,
+            shippingAmount: s.shipping,
+            totalAmount: s.total,
             shipToAddress: shippingAddress,
             shipToCity: shippingCity,
             shipToState: shippingState,
             shipToZip: shippingZip,
             orderNotes,
-            totalItems: items.length,
-            totalUnits: items.reduce((sum, item) => sum + item.quantity, 0),
-            lines: { create: lineData },
+            totalItems: s.items.length,
+            totalUnits: s.items.reduce((sum, item) => sum + item.quantity, 0),
+            lines: { create: s.lineData },
           },
           include: { wholesaler: true, lines: true },
         });
@@ -266,6 +408,22 @@ export async function POST(request: NextRequest) {
       // Clear cart inside the same transaction
       await tx.cartItem.deleteMany({ where: { retailerId } });
 
+      // Persist idempotency record so retries replay this response.
+      if (idempotencyKey && idempotencyHash) {
+        const responseBody = {
+          orders: createdOrders,
+          cartCleared: true,
+          message: `${createdOrders.length} order(s) placed successfully`,
+        };
+        await storeIdempotentResponse(
+          tx,
+          idempotencyScope,
+          idempotencyKey,
+          idempotencyHash,
+          { statusCode: 201, body: responseBody },
+        );
+      }
+
       return { ok: true as const, createdOrders };
     });
 
@@ -278,6 +436,7 @@ export async function POST(request: NextRequest) {
       retailerId,
       orderCount: result.createdOrders.length,
       orderNumbers: result.createdOrders.map((o) => o.orderNumber),
+      idempotent: !!idempotencyKey,
     });
 
     return NextResponse.json({

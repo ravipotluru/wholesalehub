@@ -35,3 +35,7 @@ next-env.d.ts
 
 # prisma
 prisma/*.db
+
+# Claude Code worktree state
+.claude/
+

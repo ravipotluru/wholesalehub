@@ -60,8 +60,17 @@ export async function GET(request: NextRequest) {
       };
     }
 
+    // Visibility gate: every search/products query only surfaces PUBLIC
+    // listings until we add the WholesalerBuyerApproval table. Existing
+    // data defaults to PUBLIC at the column level so this is a no-op
+    // post-migration.
+    const visibilityFilter: Prisma.ProductPricingWhereInput = {
+      isActive: true,
+      visibility: 'PUBLIC',
+    };
+
     if (stockStatus) {
-      where.pricings = { some: { stockStatus, isActive: true } };
+      where.pricings = { some: { ...visibilityFilter, stockStatus } };
     }
 
     // Push min/max price into the SQL `where` so pagination total stays consistent
@@ -72,11 +81,17 @@ export async function GET(request: NextRequest) {
       if (maxPrice !== undefined) priceFilter.lte = maxPrice;
       where.pricings = {
         some: {
-          isActive: true,
+          ...visibilityFilter,
           wholesalePrice: priceFilter,
           ...(stockStatus ? { stockStatus } : {}),
         },
       };
+    }
+
+    // Even when no price/stock filter is applied, ensure non-PUBLIC
+    // listings don't make a product appear in search.
+    if (!where.pricings) {
+      where.pricings = { some: visibilityFilter };
     }
 
     const [total, products, categories] = await Promise.all([
@@ -86,7 +101,7 @@ export async function GET(request: NextRequest) {
         include: {
           category: true,
           pricings: {
-            where: { isActive: true },
+            where: { isActive: true, visibility: 'PUBLIC' },
             include: { wholesaler: true },
             orderBy: { wholesalePrice: 'asc' },
           },

@@ -148,6 +148,15 @@ enum CategoryStatus {
   INACTIVE
 }
 
+/// Visibility of a wholesaler's listing on a product. PUBLIC is the default;
+/// APPROVED_BUYERS_ONLY is reserved for a follow-up where we add a
+/// `WholesalerBuyerApproval` join table. Until then, anything marked
+/// APPROVED_BUYERS_ONLY is hidden from search.
+enum PricingVisibility {
+  PUBLIC
+  APPROVED_BUYERS_ONLY
+}
+
 // ─── MODELS ───
 
 model User {
@@ -322,33 +331,57 @@ model ProductBarcode {
 }
 
 model ProductPricing {
-  id              String     @id @default(cuid())
+  id              String            @id @default(cuid())
   productId       String
   wholesalerId    String
-  wholesalePrice  Decimal    @db.Decimal(10, 2)
-  msrp            Decimal?   @db.Decimal(10, 2)
-  minimumOrderQty Int        @default(1)
+  wholesalePrice  Decimal           @db.Decimal(10, 2)
+  msrp            Decimal?          @db.Decimal(10, 2)
+  minimumOrderQty Int               @default(1)
   caseQty         Int?
-  pricePerCase    Decimal?   @db.Decimal(10, 2)
-  stockQuantity   Int        @default(0)
-  stockStatus     StockStatus @default(IN_STOCK)
+  pricePerCase    Decimal?          @db.Decimal(10, 2)
+  stockQuantity   Int               @default(0)
+  stockStatus     StockStatus       @default(IN_STOCK)
   leadTimeDays    Int?
-  onPromotion     Boolean    @default(false)
-  promoPrice      Decimal?   @db.Decimal(10, 2)
+  onPromotion     Boolean           @default(false)
+  promoPrice      Decimal?          @db.Decimal(10, 2)
   promoStartDate  DateTime?
   promoEndDate    DateTime?
-  isActive        Boolean    @default(true)
-  validFrom       DateTime   @default(now())
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  /// Catalog visibility. APPROVED_BUYERS_ONLY listings are hidden from
+  /// search/products until the buyer-approval join table is added in a
+  /// follow-up PR.
+  visibility      PricingVisibility @default(PUBLIC)
+  isActive        Boolean           @default(true)
+  validFrom       DateTime          @default(now())
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 
-  product    Product    @relation(fields: [productId], references: [id])
-  wholesaler Wholesaler @relation(fields: [wholesalerId], references: [id])
+  product    Product     @relation(fields: [productId], references: [id])
+  wholesaler Wholesaler  @relation(fields: [wholesalerId], references: [id])
+  tiers      PriceTier[]
 
   @@unique([productId, wholesalerId])
   @@index([wholesalerId])
   @@index([isActive, stockStatus])
+  @@index([visibility, isActive])
   @@map("product_pricings")
+}
+
+/// Volume discount tier. Selection finds the tier with the largest `minQty`
+/// not exceeding the order quantity, then takes the cheapest of {base,
+/// matching tier, active promo}. Tiers are inclusive — minQty 12 + minQty 24
+/// means [12..23] gets the 12-tier, [24..) gets the 24-tier.
+model PriceTier {
+  id               String   @id @default(cuid())
+  productPricingId String
+  minQty           Int
+  unitPrice        Decimal  @db.Decimal(10, 2)
+  notes            String?
+  createdAt        DateTime @default(now())
+
+  productPricing ProductPricing @relation(fields: [productPricingId], references: [id], onDelete: Cascade)
+
+  @@unique([productPricingId, minQty])
+  @@map("price_tiers")
 }
 
 model PriceHistory {
@@ -858,4 +891,24 @@ model Notification {
 
   @@index([userId, isRead, createdAt])
   @@map("notifications")
+}
+
+/// Idempotency cache for state-changing API calls (currently POST /api/orders).
+/// Clients send `Idempotency-Key: <uuid>`. We hash the request body and store
+/// the response so a retry with the same key+body returns the same result.
+/// `requestHash` is included in the lookup so a key reused with a different
+/// body is rejected as a conflict — that catches client bugs.
+model IdempotencyKey {
+  id           String   @id @default(cuid())
+  key          String
+  scope        String   // e.g. "POST /api/orders" + retailerId
+  requestHash  String
+  responseBody Json
+  statusCode   Int
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+
+  @@unique([scope, key])
+  @@index([expiresAt])
+  @@map("idempotency_keys")
 }

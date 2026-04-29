@@ -1,8 +1,21 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { redis } from '@/lib/redis';
+import { rateLimit, clientIp } from '@/lib/rate-limit';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // Per-IP rate limit so an attacker can't use the health endpoint for
+  // DB/Redis amplification or recon. Real load balancers can pre-limit too.
+  const ip = clientIp(request);
+  const limit = await rateLimit({
+    key: `health:${ip}`,
+    limit: 30,
+    windowSec: 60,
+  });
+  if (!limit.ok) {
+    return new NextResponse('Too Many Requests', { status: 429 });
+  }
+
   const checks: Record<string, { status: string; latencyMs?: number }> = {};
 
   // Database check

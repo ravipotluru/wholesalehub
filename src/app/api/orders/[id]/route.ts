@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { auth } from '@/lib/auth';
+import { getAuthedUser } from '@/lib/session';
 import { orderStatusUpdateSchema } from '@/lib/validators';
 import { logger } from '@/lib/logger';
+import { canAccessOrder } from '@/lib/order-access';
 
 /** GET /api/orders/[id] — Get order detail */
 export async function GET(
@@ -10,8 +11,8 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await auth();
-    if (!session?.user) {
+    const user = await getAuthedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -31,6 +32,17 @@ export async function GET(
     });
 
     if (!order) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    }
+
+    if (!canAccessOrder(user, order)) {
+      logger.warn({
+        event: 'order_access_denied',
+        userId: user.id,
+        role: user.role,
+        orderId: order.id,
+      });
+      // Return 404 (not 403) so we don't confirm the order exists to a probing attacker.
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 
@@ -61,13 +73,10 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await auth();
-    if (!session?.user) {
+    const user = await getAuthedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    const user = session.user as Record<string, unknown>;
-    const role = user.role as string;
 
     const body = await request.json();
     const validation = orderStatusUpdateSchema.safeParse(body);
@@ -87,6 +96,16 @@ export async function PATCH(
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 
+    if (!canAccessOrder(user, order)) {
+      logger.warn({
+        event: 'order_update_denied',
+        userId: user.id,
+        role: user.role,
+        orderId: order.id,
+      });
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    }
+
     // Validate status transitions
     if (status === 'CANCELLED' && !['PENDING', 'CONFIRMED'].includes(order.orderStatus)) {
       return NextResponse.json(
@@ -95,38 +114,51 @@ export async function PATCH(
       );
     }
 
-    // Only wholesalers/admins can confirm/ship
+    // Only wholesalers/admins can confirm/ship/deliver. Retailers can only cancel.
     if (['CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED'].includes(status)) {
-      if (role !== 'WHOLESALER' && role !== 'ADMIN') {
+      if (user.role !== 'WHOLESALER' && user.role !== 'ADMIN') {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
     }
+    if (status === 'REJECTED' && user.role !== 'WHOLESALER' && user.role !== 'ADMIN') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     const previousStatus = order.orderStatus;
-    const updateData: Record<string, unknown> = { orderStatus: status };
+    const updateData: {
+      orderStatus: typeof status;
+      trackingNumber?: string;
+      shippingCarrier?: string;
+      cancellationReason?: string;
+    } = { orderStatus: status };
 
     if (trackingNumber) updateData.trackingNumber = trackingNumber;
     if (shippingCarrier) updateData.shippingCarrier = shippingCarrier;
     if (cancellationReason) updateData.cancellationReason = cancellationReason;
 
-    const updated = await prisma.order.update({
-      where: { id: params.id },
-      data: updateData,
-    });
+    // Update + audit must be atomic — we never want a status change without
+    // its audit row, or vice versa.
+    const updated = await prisma.$transaction(async (tx) => {
+      const u = await tx.order.update({
+        where: { id: params.id },
+        data: updateData,
+      });
 
-    // Create audit event
-    await prisma.auditEvent.create({
-      data: {
-        actorId: user.id as string,
-        actorType: 'USER',
-        action: 'STATUS_CHANGE',
-        entityType: 'ORDER',
-        entityId: params.id,
-        previousState: { status: previousStatus },
-        newState: { status },
-        changedFields: ['orderStatus'],
-        reason: cancellationReason || `Status changed to ${status}`,
-      },
+      await tx.auditEvent.create({
+        data: {
+          actorId: user.id,
+          actorType: 'USER',
+          action: 'STATUS_CHANGE',
+          entityType: 'ORDER',
+          entityId: params.id,
+          previousState: { status: previousStatus },
+          newState: { status },
+          changedFields: ['orderStatus'],
+          reason: cancellationReason || `Status changed to ${status}`,
+        },
+      });
+
+      return u;
     });
 
     logger.info({

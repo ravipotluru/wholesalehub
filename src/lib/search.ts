@@ -365,13 +365,13 @@ async function enrichProductResults(
     const highestPrice = prices.length > 0 ? Math.max(...prices) : 0;
     const bestPricing = activePricings[0] ?? null;
 
-    const stockStatus = activePricings.some(
-      (p) => p.stockStatus === 'IN_STOCK',
-    )
+    const stockStatus = activePricings.some((p) => p.stockStatus === 'IN_STOCK')
       ? 'IN_STOCK'
       : activePricings.some((p) => p.stockStatus === 'LOW_STOCK')
         ? 'LOW_STOCK'
-        : 'OUT_OF_STOCK';
+        : activePricings.some((p) => p.stockStatus === 'BACKORDER')
+          ? 'BACKORDER'
+          : 'OUT_OF_STOCK';
 
     return {
       id: product.id,

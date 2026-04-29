@@ -1,11 +1,27 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { registerSchema } from '@/lib/validators';
 import { logger } from '@/lib/logger';
+import { rateLimit, clientIp } from '@/lib/rate-limit';
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    // Per-IP rate limit. Without this, an attacker can enumerate which
+    // emails are already registered via 409 responses.
+    const ip = clientIp(request);
+    const limit = await rateLimit({
+      key: `register:${ip}`,
+      limit: 5,
+      windowSec: 600,
+    });
+    if (!limit.ok) {
+      return NextResponse.json(
+        { error: 'Too many registration attempts. Please try again later.' },
+        { status: 429 }
+      );
+    }
+
     const body = await request.json();
     const validation = registerSchema.safeParse(body);
 
@@ -17,12 +33,10 @@ export async function POST(request: Request) {
     }
 
     const data = validation.data;
+    const email = data.email.toLowerCase();
 
     // Check if email already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email: data.email },
-    });
-
+    const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
       return NextResponse.json(
         { error: 'An account with this email already exists' },
@@ -32,67 +46,72 @@ export async function POST(request: Request) {
 
     const passwordHash = await bcrypt.hash(data.password, 12);
 
-    // Create retailer or wholesaler record based on role
-    let retailerId: string | null = null;
-    let wholesalerId: string | null = null;
+    // Create retailer/wholesaler + user atomically. If the user create
+    // fails, we never want a dangling Retailer/Wholesaler row hanging on.
+    const userId = await prisma.$transaction(async (tx) => {
+      let retailerId: string | null = null;
+      let wholesalerId: string | null = null;
 
-    if (data.role === 'RETAILER') {
-      const count = await prisma.retailer.count();
-      const retailer = await prisma.retailer.create({
+      if (data.role === 'RETAILER') {
+        const count = await tx.retailer.count();
+        const retailer = await tx.retailer.create({
+          data: {
+            retailerId: `RT${String(count + 100).padStart(3, '0')}`,
+            name: data.businessName,
+            businessName: data.businessName,
+            storeType: data.storeType || 'Smoke Shop',
+            contactEmail: email,
+            address: data.storeAddress,
+            city: data.storeCity,
+            state: data.storeState,
+            zipCode: data.storeZip,
+          },
+        });
+        retailerId = retailer.id;
+      } else if (data.role === 'WHOLESALER') {
+        const count = await tx.wholesaler.count();
+        const wholesaler = await tx.wholesaler.create({
+          data: {
+            wholesalerId: `WS${String(count + 100).padStart(3, '0')}`,
+            name: data.businessName,
+            businessName: data.businessName,
+            contactName: `${data.firstName} ${data.lastName}`,
+            contactEmail: email,
+            contactPhone: data.phone,
+            licenseNumber: data.licenseNumber,
+            licenseState: data.licenseState,
+            status: 'PENDING_APPROVAL',
+          },
+        });
+        wholesalerId = wholesaler.id;
+      }
+
+      const user = await tx.user.create({
         data: {
-          retailerId: `RT${String(count + 100).padStart(3, '0')}`,
-          name: data.businessName,
-          businessName: data.businessName,
-          storeType: data.storeType || 'Smoke Shop',
-          contactEmail: data.email,
-          address: data.storeAddress,
-          city: data.storeCity,
-          state: data.storeState,
-          zipCode: data.storeZip,
+          email,
+          passwordHash,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          phone: data.phone,
+          role: data.role,
+          ageVerified: data.ageVerified,
+          retailerId,
+          wholesalerId,
         },
       });
-      retailerId = retailer.id;
-    } else if (data.role === 'WHOLESALER') {
-      const count = await prisma.wholesaler.count();
-      const wholesaler = await prisma.wholesaler.create({
-        data: {
-          wholesalerId: `WS${String(count + 100).padStart(3, '0')}`,
-          name: data.businessName,
-          businessName: data.businessName,
-          contactName: `${data.firstName} ${data.lastName}`,
-          contactEmail: data.email,
-          contactPhone: data.phone,
-          licenseNumber: data.licenseNumber,
-          licenseState: data.licenseState,
-          status: 'PENDING_APPROVAL',
-        },
-      });
-      wholesalerId = wholesaler.id;
-    }
 
-    const user = await prisma.user.create({
-      data: {
-        email: data.email,
-        passwordHash,
-        firstName: data.firstName,
-        lastName: data.lastName,
-        phone: data.phone,
-        role: data.role,
-        ageVerified: data.ageVerified,
-        retailerId,
-        wholesalerId,
-      },
+      return user.id;
     });
 
     logger.info({
       event: 'user_registered',
-      userId: user.id,
+      userId,
       role: data.role,
-      email: data.email,
+      email,
     });
 
     return NextResponse.json(
-      { message: 'Account created successfully', userId: user.id },
+      { message: 'Account created successfully', userId },
       { status: 201 }
     );
   } catch (error) {

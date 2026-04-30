@@ -14,6 +14,13 @@ export interface ApiErrorBody {
     code: string;
     message: string;
     details?: Record<string, unknown>;
+    /**
+     * Optional hint for clients about how to recover from this error. Used
+     * by the buyer-verification gate (`requiredAction: 'VERIFY_BUYER'`) so
+     * the UI can deep-link the user to the right onboarding step. Not part
+     * of the contract on most errors — clients should still match on `code`.
+     */
+    requiredAction?: string;
     requestId: string;
   };
 }
@@ -28,6 +35,8 @@ export interface ApiErrorOptions {
   code: string;
   message: string;
   details?: Record<string, unknown>;
+  /** Optional client-recovery hint (e.g. `'VERIFY_BUYER'`). */
+  requiredAction?: string;
   /** Pre-existing request id (e.g. from middleware). Generated if absent. */
   requestId?: string;
   /** Free-form context for the log line (NOT returned to the client). */
@@ -46,6 +55,7 @@ export function apiError(opts: ApiErrorOptions): NextResponse<ApiErrorBody> {
       code: opts.code,
       message: opts.message,
       details: opts.details,
+      requiredAction: opts.requiredAction,
       requestId,
     },
   };

@@ -157,6 +157,41 @@ enum PricingVisibility {
   APPROVED_BUYERS_ONLY
 }
 
+/// Buyer (retailer) verification lifecycle. Drives the checkout gate on
+/// age-restricted SKUs. UNVERIFIED → PENDING_REVIEW (auto, on first doc
+/// upload) → VERIFIED (admin approves all required docs) or REJECTED (admin
+/// rejects any required doc). Only VERIFIED retailers can place orders that
+/// include `Product.ageRestricted = true` lines.
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING_REVIEW
+  VERIFIED
+  REJECTED
+}
+
+/// Categories of supporting documents a retailer can upload during the
+/// buyer-verification flow. RESALE_CERTIFICATE + EIN_LETTER + TOBACCO_LICENSE
+/// are the three required types — once each is APPROVED, the retailer flips
+/// to VERIFIED. STATE_BUSINESS_LICENSE / AGE_VERIFICATION / OTHER are
+/// optional supporting evidence that admins may request situationally.
+enum BuyerDocumentType {
+  RESALE_CERTIFICATE
+  EIN_LETTER
+  TOBACCO_LICENSE
+  STATE_BUSINESS_LICENSE
+  AGE_VERIFICATION
+  OTHER
+}
+
+/// Per-document review state. PENDING is the default after upload; APPROVED
+/// or REJECTED are the terminal states set by an admin reviewer. The
+/// retailer-level `verificationStatus` is derived from the union of these.
+enum BuyerDocumentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 // ─── MODELS ───
 
 model User {
@@ -226,29 +261,53 @@ model Wholesaler {
 }
 
 model Retailer {
-  id             String         @id @default(cuid())
-  retailerId     String         @unique // RT001, RT002...
-  name           String
-  businessName   String
-  storeType      String?        // Smoke Shop, Gas Station, Convenience Store
-  contactEmail   String
-  address        String?
-  city           String?
-  state          String?
-  zipCode        String?
-  latitude       Decimal?       @db.Decimal(10, 7)
-  longitude      Decimal?       @db.Decimal(10, 7)
-  creditLimit    Decimal?       @db.Decimal(10, 2)
-  paymentMethod  String?
-  status         RetailerStatus @default(ACTIVE)
-  lifetimeValue  Decimal?       @db.Decimal(12, 2) @default(0)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  id                 String             @id @default(cuid())
+  retailerId         String             @unique // RT001, RT002...
+  name               String
+  businessName       String
+  storeType          String?            // Smoke Shop, Gas Station, Convenience Store
+  contactEmail       String
+  address            String?
+  city               String?
+  state              String?
+  zipCode            String?
+  latitude           Decimal?           @db.Decimal(10, 7)
+  longitude          Decimal?           @db.Decimal(10, 7)
+  creditLimit        Decimal?           @db.Decimal(10, 2)
+  paymentMethod      String?
+  status             RetailerStatus     @default(ACTIVE)
+  lifetimeValue      Decimal?           @db.Decimal(12, 2) @default(0)
+  /// Buyer-verification lifecycle. Gates checkout on age-restricted lines.
+  /// See `BuyerDocument` for the supporting documents that drive transitions.
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  /// Tax ID supplied during onboarding, retained for record-keeping. Free
+  /// text — different states use different formats (we only show this to
+  /// admins during review). Sensitive enough to keep out of search results.
+  taxId              String?
+  /// Federal Employer Identification Number, also free text. Stored alongside
+  /// the EIN_LETTER document upload so admins can spot-check the letter
+  /// matches the claimed EIN.
+  ein                String?
+  /// Optional resale certificate number — convenience field for admin
+  /// review. The actual certificate PDF lives in a `BuyerDocument` row of
+  /// type RESALE_CERTIFICATE.
+  resaleCertificate  String?
+  /// Set when the retailer transitions to VERIFIED. Both fields land
+  /// together in the same admin transaction.
+  verifiedAt         DateTime?
+  /// User id of the admin who approved verification. Stored as a free
+  /// string (not a relation) so admins remain auditable even if their
+  /// User row is later soft-deleted.
+  verifiedBy         String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
 
   users     User[]
   cartItems CartItem[]
   orders    Order[]
+  buyerDocuments BuyerDocument[]
 
+  @@index([verificationStatus])
   @@map("retailers")
 }
 
@@ -891,6 +950,49 @@ model Notification {
 
   @@index([userId, isRead, createdAt])
   @@map("notifications")
+}
+
+/// Supporting document uploaded by a retailer during the buyer-verification
+/// flow. The actual file lives at `storageUrl` (signed URL or `s3://` path);
+/// this row is the metadata + review state. Review is per-document: an
+/// admin approves or rejects each one individually. The retailer-level
+/// `Retailer.verificationStatus` is derived from the set of approvals/
+/// rejections (see logic in `src/lib/buyer-verification.ts`).
+///
+/// Required types for VERIFIED status: RESALE_CERTIFICATE, EIN_LETTER,
+/// TOBACCO_LICENSE. Any of those rejected → retailer flips to REJECTED.
+model BuyerDocument {
+  id           String              @id @default(cuid())
+  retailerId   String
+  type         BuyerDocumentType
+  status       BuyerDocumentStatus @default(PENDING)
+  /// Signed URL or `s3://bucket/key` path. The actual file upload happens
+  /// out-of-band (S3 / Vercel Blob signed-URL flow); this row only stores
+  /// the resulting reference. Validated as a non-empty string at the
+  /// API boundary; the storage layer enforces format.
+  storageUrl   String
+  fileName     String
+  mimeType     String
+  /// File size in KB. Validated server-side so a client can't claim a
+  /// 10 GB file landed at a signed URL we never issued.
+  fileSizeKb   Int
+  /// Optional retailer-supplied notes ("here's the renewed cert").
+  notes        String?
+  /// User id of the admin who approved/rejected. Free string (not a
+  /// relation) for the same audit-survival reason as `Retailer.verifiedBy`.
+  reviewedBy   String?
+  reviewedAt   DateTime?
+  /// Required when `status = REJECTED`. Surfaced to the retailer so they
+  /// know what to fix before re-uploading.
+  rejectReason String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  retailer Retailer @relation(fields: [retailerId], references: [id])
+
+  @@index([retailerId, type])
+  @@index([status, createdAt])
+  @@map("buyer_documents")
 }
 
 /// Idempotency cache for state-changing API calls (currently POST /api/orders).

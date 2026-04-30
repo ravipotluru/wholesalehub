@@ -47,13 +47,58 @@ export const addToCartSchema = z.object({
 });
 
 export const checkoutSchema = z.object({
-  shippingAddress: z.string().min(1, 'Address is required'),
-  shippingCity: z.string().min(1, 'City is required'),
-  shippingState: z.string().min(1, 'State is required'),
-  shippingZip: z.string().min(1, 'ZIP code is required'),
+  /**
+   * Optional pointer to a saved RetailerLocation for chains. When provided,
+   * the API verifies it belongs to the calling retailer + is active, then
+   * snapshots the location's address into the order's `shipTo*` columns.
+   * When omitted: the API picks the retailer's default location, then any
+   * remaining active location, then falls back to the legacy address fields
+   * below (retailers with zero locations).
+   */
+  shipToLocationId: z.string().min(1).optional(),
+  shippingAddress: z.string().min(1, 'Address is required').optional(),
+  shippingCity: z.string().min(1, 'City is required').optional(),
+  shippingState: z.string().min(1, 'State is required').optional(),
+  shippingZip: z.string().min(1, 'ZIP code is required').optional(),
   paymentMethod: z.enum(['NET30', 'CREDIT_CARD', 'ACH']),
   orderNotes: z.string().optional(),
 });
+
+/**
+ * Body for POST /api/retailer/locations. `isDefault: true` causes the API
+ * to atomically clear `isDefault` on every other row for the same retailer
+ * inside the same `$transaction` so we can never end up with two defaults.
+ */
+export const createRetailerLocationSchema = z.object({
+  label: z.string().min(1, 'Label is required').max(100),
+  address: z.string().min(1, 'Address is required').max(255),
+  city: z.string().min(1, 'City is required').max(100),
+  state: z.string().min(1, 'State is required').max(50),
+  zipCode: z.string().min(1, 'ZIP code is required').max(20),
+  contactName: z.string().max(100).optional(),
+  contactPhone: z.string().max(50).optional(),
+  notes: z.string().max(500).optional(),
+  isDefault: z.boolean().optional(),
+});
+
+/**
+ * Body for PATCH /api/retailer/locations/[id]. Same isDefault flip as create.
+ */
+export const updateRetailerLocationSchema = z
+  .object({
+    label: z.string().min(1).max(100).optional(),
+    address: z.string().min(1).max(255).optional(),
+    city: z.string().min(1).max(100).optional(),
+    state: z.string().min(1).max(50).optional(),
+    zipCode: z.string().min(1).max(20).optional(),
+    contactName: z.string().max(100).nullable().optional(),
+    contactPhone: z.string().max(50).nullable().optional(),
+    notes: z.string().max(500).nullable().optional(),
+    isDefault: z.boolean().optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one field must be provided',
+  });
 
 export const stockStatusEnum = z.enum([
   'IN_STOCK',
@@ -128,3 +173,5 @@ export type BarcodeScanInput = z.infer<typeof barcodeScanSchema>;
 export type OrderStatusUpdateInput = z.infer<typeof orderStatusUpdateSchema>;
 export type InventoryWebhookPayload = z.infer<typeof inventoryWebhookSchema>;
 export type StockStatus = z.infer<typeof stockStatusEnum>;
+export type CreateRetailerLocationInput = z.infer<typeof createRetailerLocationSchema>;
+export type UpdateRetailerLocationInput = z.infer<typeof updateRetailerLocationSchema>;

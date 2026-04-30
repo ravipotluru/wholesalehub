@@ -245,11 +245,41 @@ model Retailer {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
-  users     User[]
-  cartItems CartItem[]
-  orders    Order[]
+  users            User[]
+  cartItems        CartItem[]
+  orders           Order[]
+  shipToLocations  RetailerLocation[]
 
   @@map("retailers")
+}
+
+/// Physical ship-to location belonging to a Retailer (the bill-to entity).
+/// Chains have one Retailer with many RetailerLocation rows — at checkout the
+/// buyer picks which location should receive the order. Soft-deleted via
+/// `isActive=false` to preserve the historical link from any Order that
+/// already references the location.
+model RetailerLocation {
+  id           String   @id @default(cuid())
+  retailerId   String
+  label        String
+  address      String
+  city         String
+  state        String
+  zipCode      String
+  contactName  String?
+  contactPhone String?
+  notes        String?
+  isDefault    Boolean  @default(false)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  retailer Retailer @relation(fields: [retailerId], references: [id])
+  orders   Order[]
+
+  @@index([retailerId, isActive])
+  @@index([retailerId, isDefault])
+  @@map("retailer_locations")
 }
 
 model Category {
@@ -438,6 +468,7 @@ model Order {
   totalAmount       Decimal       @db.Decimal(10, 2)
   shippingCarrier   String?
   trackingNumber    String?
+  shipToLocationId  String?
   shipToAddress     String?
   shipToCity        String?
   shipToState       String?
@@ -449,15 +480,17 @@ model Order {
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
-  retailer   Retailer   @relation(fields: [retailerId], references: [id])
-  wholesaler Wholesaler @relation(fields: [wholesalerId], references: [id])
-  user       User       @relation(fields: [userId], references: [id])
-  lines      OrderLine[]
+  retailer       Retailer          @relation(fields: [retailerId], references: [id])
+  wholesaler     Wholesaler        @relation(fields: [wholesalerId], references: [id])
+  user           User              @relation(fields: [userId], references: [id])
+  shipToLocation RetailerLocation? @relation(fields: [shipToLocationId], references: [id])
+  lines          OrderLine[]
 
   @@index([retailerId, orderDate])
   @@index([wholesalerId, orderDate])
   @@index([userId])
   @@index([orderStatus, orderDate])
+  @@index([shipToLocationId])
   @@map("orders")
 }
 

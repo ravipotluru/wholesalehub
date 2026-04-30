@@ -36,6 +36,11 @@ next-env.d.ts
 # prisma
 prisma/*.db
 
-# Claude Code worktree state
-.claude/
+# Claude Code — track project skills + rules, ignore session/worktree state
+.claude/*
+!.claude/skills/
+!.claude/rules/
+.claude/worktrees/
+.claude/cache/
+.claude/sessions/
 

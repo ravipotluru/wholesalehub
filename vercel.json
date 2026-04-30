@@ -1,0 +1,15 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "regions": ["iad1"],
+  "crons": [
+    {
+      "path": "/api/cron/license-expiry-check",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/anomaly-digest",
+      "schedule": "0 12 * * 1"
+    }
+  ]
+}

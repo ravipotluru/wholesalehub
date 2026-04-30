@@ -185,11 +185,58 @@ npm run db:reset                  # drop + recreate + seed (DEV ONLY)
 
 ## How to use Claude on this project effectively
 
-- **Start a session in the repo root.** Claude Code reads `CLAUDE.md` automatically.
-- **For audits / refactors**, ask for a static review first (Claude lists findings), then explicitly approve which to apply. Don't ask for "fix everything" without scope — schema/UI changes need eyes-on validation.
-- **For features**, scope to one PR-sized chunk. The recent work has been: PR #1 = security audit, PR #2 = order safety + compliance scaffolding. Keep that cadence.
-- **For ops tasks** (rerun audit, test on a branch, ping prod, kick license cron), use the **Ops Dispatch** GH Action — runnable from the GitHub mobile app via "Run workflow".
-- **Don't ask Claude to push directly to `main`.** Push to a branch, open a PR via REST API, squash-merge after CI is green. The `gh_*` tokens used should be short-lived and revoked after.
+### Project skills (live in `.claude/skills/`)
+
+These are project-shared, version-controlled skills that any Claude Code session in this repo can invoke:
+
+- **`/wholesalehub-asn-fixture`** — generate a properly HMAC-signed test ASN webhook for `/api/webhooks/inventory`. Takes args like `--lines 10 --send` or `--invalid quantity`. Saves the "find the secret, compute the HMAC, build the payload" detour every QA round.
+- **`/wholesalehub-checks`** — run the full pre-PR check suite locally (install + prisma generate + lint + typecheck + test + build) with one PASS/FAIL summary. Faster than waiting for CI to fail.
+- **`/wholesalehub-design-handoff`** — bridge from Claude Design (claude.ai/design) to a Claude Code branch. Paste the handoff bundle, the skill scaffolds the page, components, types, and tests in the right place using the project conventions.
+
+### Project rules (live in `.claude/rules/`)
+
+These are path-specific rules that Claude Code applies automatically when editing files matching the path glob:
+
+- **`api-routes.md`** — `src/app/api/**/route.ts`. Auth, IDOR, validation, transactions, money, idempotency, rate limiting, logging, error envelope, webhooks. Stricter than CLAUDE.md.
+- **`schema.md`** — `prisma/schema.prisma` + migrations. Two-step rules for column drops/renames/type changes. Migration-naming standards. Append-only tables.
+- **`ui-files.md`** — `src/app/(dashboard|auth)/**`, `src/components/**`. Default: don't touch UI from headless Claude Code. Use Claude Design (claude.ai/design) for any non-trivial UI change, then route through the design-handoff skill.
+
+### Claude Design integration (claude.ai/design)
+
+For any UI change beyond a typo:
+
+1. Open https://claude.ai/design (Claude Pro / Max / Team / Enterprise required)
+2. Describe the screen; reference our design system (`tailwind.config.ts` brand colors + components in `src/components/ui/`). If your subscription supports it, connect the GitHub repo so Claude Design auto-extracts the design tokens.
+3. Iterate visually with voice / sliders / inline comments
+4. Export the handoff bundle
+5. Run `/wholesalehub-design-handoff <bundle-path>` — Claude Code scaffolds the page + components + types + tests using our conventions
+6. Review the draft PR, then mark ready
+
+P0 UI screens to run through this workflow are listed in `docs/PRODUCTION-PLAN.md` under the "Mobile / PWA" and "Buyer / Seller experience" sections.
+
+### General workflow
+
+- **Start a session in the repo root.** Claude Code reads `CLAUDE.md` and applies the rules in `.claude/rules/` automatically.
+- **For audits / refactors**, ask for a static review first, then explicitly approve which to apply. Don't ask for "fix everything" without scope.
+- **For features**, scope to one PR-sized chunk. Past PRs: #1 = security audit, #2 = order safety + scaffolding, #3 = health monitor, #4 = Claude watcher, #5 = reorder, #6 = production plan. Keep that cadence.
+- **For ops tasks** (rerun audit, test on a branch, ping prod, kick license cron), use the **Ops Dispatch** GH Action — runnable from the GitHub mobile app's "Run workflow" button.
+- **Don't push directly to `main`.** Push to a branch, open a PR via REST API, squash-merge after CI is green. Use short-lived PATs and revoke after.
+
+### Useful Claude Code slash commands for this project
+
+- `/init` — already done (created CLAUDE.md)
+- `/simplify [focus]` — code review with 3 parallel agents; useful for refactor passes
+- `/ultrareview [PR#]` — cloud code review on a specific PR (use before merging large PRs)
+- `/security-review` — scan the current diff for vulnerabilities
+- `/batch` — auto-creates worktrees for parallel feature work (5-30 worktrees)
+- `/loop [interval] [prompt]` — recurring local task (different from the GH Actions watcher)
+- `/usage` — token usage and cost breakdown
+- `/insights` — analyze your sessions report
+
+### Companion docs
+
+- `docs/PRODUCTION-PLAN.md` — full roadmap with P0/P1/P2 prioritization across 14 domains
+- `docs/claude-watcher.md` — scheduled review-agent setup (the GH Actions one)
 
 ## Known sharp edges
 

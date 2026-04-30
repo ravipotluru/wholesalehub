@@ -1,4 +1,14 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+/*
+ * NOTE: Brand fonts are loaded via `next/font/google` in `src/app/layout.tsx`,
+ * which exposes them as `--font-sans` and `--font-mono` CSS variables and
+ * self-hosts the files at build time. No `@import url(...)` here — that
+ * pattern blocks Claude Design's font detection and causes FOUT.
+ *
+ * Tailwind config (tailwind.config.ts) reads those variables and binds them
+ * to the `font-sans` / `font-mono` utility classes, so every component
+ * picks them up via `<html>` having the `inter.variable` and
+ * `jetbrainsMono.variable` classes attached.
+ */
 
 @tailwind base;
 @tailwind components;
@@ -6,12 +16,7 @@
 
 @layer base {
   body {
-    @apply bg-light text-dark antialiased;
-    font-family: 'Inter', system-ui, sans-serif;
-  }
-
-  .font-mono {
-    font-family: 'JetBrains Mono', monospace;
+    @apply bg-light text-dark antialiased font-sans;
   }
 }
 

@@ -47,6 +47,19 @@ export function generateReceiptNumber(): string {
   return `${prefix}-${timestamp}-${random}`;
 }
 
+/**
+ * Human-friendly product identifier for the `Product.productId` column.
+ * Seed data uses the curated `PRD001..PRD010` form; bulk-imported products
+ * get an opaque, collision-resistant id of the same `PRD-...` shape so the
+ * unique constraint never collides with concurrent imports.
+ */
+export function generateProductId(): string {
+  const prefix = 'PRD';
+  const timestamp = Date.now().toString(36).toUpperCase();
+  const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+  return `${prefix}-${timestamp}-${random}`;
+}
+
 export function calculateSavings(lowest: number, highest: number): { amount: number; percent: number } {
   const amount = highest - lowest;
   const percent = highest > 0 ? (amount / highest) * 100 : 0;

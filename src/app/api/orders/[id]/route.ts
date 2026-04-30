@@ -4,17 +4,21 @@ import { getAuthedUser } from '@/lib/session';
 import { orderStatusUpdateSchema } from '@/lib/validators';
 import { logger } from '@/lib/logger';
 import { canAccessOrder } from '@/lib/order-access';
+import { captureApiError } from '@/lib/sentry';
 
 /** GET /api/orders/[id] — Get order detail */
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  // Hoisted so the catch block can include `userId` in the Sentry event.
+  let userIdForCatch: string | undefined;
   try {
     const user = await getAuthedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    userIdForCatch = user.id;
 
     const order = await prisma.order.findFirst({
       where: {
@@ -63,6 +67,7 @@ export async function GET(
     });
   } catch (error) {
     logger.error({ event: 'order_detail_error', orderId: params.id, error: (error as Error).message });
+    captureApiError(error, { route: 'orders.id', userId: userIdForCatch });
     return NextResponse.json({ error: 'Failed to fetch order' }, { status: 500 });
   }
 }
@@ -72,11 +77,14 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  // Hoisted so the catch block can include `userId` in the Sentry event.
+  let userIdForCatch: string | undefined;
   try {
     const user = await getAuthedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    userIdForCatch = user.id;
 
     const body = await request.json();
     const validation = orderStatusUpdateSchema.safeParse(body);
@@ -175,6 +183,7 @@ export async function PATCH(
     });
   } catch (error) {
     logger.error({ event: 'order_update_error', orderId: params.id, error: (error as Error).message });
+    captureApiError(error, { route: 'orders.id', userId: userIdForCatch });
     return NextResponse.json({ error: 'Failed to update order' }, { status: 500 });
   }
 }

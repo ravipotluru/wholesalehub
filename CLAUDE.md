@@ -27,6 +27,7 @@
 - **AWS Bedrock** (Titan embeddings + Claude 3 Sonnet) — falls back to deterministic mocks when AWS creds are absent
 - **Zod 3** — every API boundary has a schema
 - **Pino** logger — structured JSON, PII-redacted (see `src/lib/logger.ts`)
+- **Sentry** (`@sentry/nextjs`) — error tracking; PII-scrubbed in `beforeSend`. No-ops when `SENTRY_DSN` is unset (see `src/lib/sentry.ts`)
 - **Jest** — unit + integration; `next/jest` config in `jest.config.js`
 - **GitHub Actions** — lint/typecheck/test/build, plus nightly cron + CodeQL + dependency review
 
@@ -244,3 +245,4 @@ P0 UI screens to run through this workflow are listed in `docs/PRODUCTION-PLAN.m
 - `/api/admin/{audit,evaluations,llmops,lineage,feedback,anomalies}` return mock data despite real DB models existing. Conversion is intentional next work, not a bug.
 - `inventory/review/route.ts` is large (~600 LOC) and partly non-transactional. Rewrite carefully with full test coverage.
 - `cart` page and other dashboard UI haven't been touched in the recent backend audit — there may be follow-on UI inconsistencies (e.g. when MOQ enforcement now hard-rejects from POST cart, the UI still expects soft warnings).
+- Sentry error tracking is wired (`@sentry/nextjs` + `src/lib/sentry.ts`) but only emits when `SENTRY_DSN` is set. Without a DSN — and `SENTRY_AUTH_TOKEN` for source-map upload — both the runtime hooks and the `withSentryConfig` wrapper silently no-op. Only `src/app/api/orders/[id]/route.ts` calls `captureApiError` today; the other ~22 routes still need the same wiring.

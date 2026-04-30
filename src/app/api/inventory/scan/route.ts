@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getAuthedUser } from '@/lib/session';
 import { barcodeScanSchema } from '@/lib/validators';
 import { logger } from '@/lib/logger';
+import { capture } from '@/lib/analytics/posthog';
 
 /** POST /api/inventory/scan — Barcode scan during receiving */
 export async function POST(request: NextRequest) {
@@ -66,6 +67,11 @@ export async function POST(request: NextRequest) {
 
     if (!product) {
       logger.warn({ event: 'barcode_not_found', barcode, receiptId });
+      capture({
+        event: 'barcode_scanned',
+        distinctId: user.id,
+        properties: { matched: false, receiptId },
+      });
       return NextResponse.json({
         matched: false,
         barcode,
@@ -86,6 +92,11 @@ export async function POST(request: NextRequest) {
     });
 
     if (!matchingLine) {
+      capture({
+        event: 'barcode_scanned',
+        distinctId: user.id,
+        properties: { matched: true, lineStatus: 'NOT_ON_RECEIPT', receiptId },
+      });
       return NextResponse.json({
         matched: true,
         product: {
@@ -180,6 +191,17 @@ export async function POST(request: NextRequest) {
       receiptId,
       qtyReceived: txResult.qtyReceived,
       lineStatus: txResult.lineStatus,
+    });
+
+    // Fire-and-forget analytics.
+    capture({
+      event: 'barcode_scanned',
+      distinctId: user.id,
+      properties: {
+        matched: true,
+        lineStatus: txResult.lineStatus,
+        receiptId,
+      },
     });
 
     return NextResponse.json({

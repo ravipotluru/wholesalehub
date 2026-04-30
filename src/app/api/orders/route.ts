@@ -12,6 +12,7 @@ import {
   storeIdempotentResponse,
 } from '@/lib/idempotency';
 import { selectUnitPrice } from '@/lib/pricing';
+import { capture } from '@/lib/analytics/posthog';
 
 const TAX_RATE = new Prisma.Decimal('0.0825');
 const ZERO = new Prisma.Decimal(0);
@@ -437,6 +438,21 @@ export async function POST(request: NextRequest) {
       orderCount: result.createdOrders.length,
       orderNumbers: result.createdOrders.map((o) => o.orderNumber),
       idempotent: !!idempotencyKey,
+    });
+
+    // Fire-and-forget analytics. Convert dollars to cents at the boundary
+    // so PostHog dashboards can sum integers (avoids float-rounding noise).
+    const totalCents = Math.round(
+      result.createdOrders.reduce((sum, o) => sum + o.total, 0) * 100,
+    );
+    capture({
+      event: 'order_placed',
+      distinctId: userId,
+      properties: {
+        orderCount: result.createdOrders.length,
+        totalCents,
+        idempotent: !!idempotencyKey,
+      },
     });
 
     return NextResponse.json({

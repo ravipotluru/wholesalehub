@@ -4,6 +4,7 @@ import { getAuthedUser } from '@/lib/session';
 import { orderStatusUpdateSchema } from '@/lib/validators';
 import { logger } from '@/lib/logger';
 import { canAccessOrder } from '@/lib/order-access';
+import { capture } from '@/lib/analytics/posthog';
 
 /** GET /api/orders/[id] — Get order detail */
 export async function GET(
@@ -167,6 +168,18 @@ export async function PATCH(
       previousStatus,
       newStatus: status,
       userId: user.id,
+    });
+
+    // Fire-and-forget analytics.
+    capture({
+      event: 'order_status_updated',
+      distinctId: user.id,
+      properties: {
+        orderId: params.id,
+        fromStatus: previousStatus,
+        toStatus: status,
+        role: user.role,
+      },
     });
 
     return NextResponse.json({

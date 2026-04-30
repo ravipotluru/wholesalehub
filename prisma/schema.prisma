@@ -157,6 +157,35 @@ enum PricingVisibility {
   APPROVED_BUYERS_ONLY
 }
 
+/// Lifecycle status of a wholesaler's Stripe Connect (Express) account.
+/// Mirrors Stripe's account state, normalised so route code never has to
+/// inspect raw `charges_enabled` / `payouts_enabled` flags.
+///   PENDING     — connected account created, KYC not yet started
+///   ONBOARDING  — user clicked the onboarding link, in flight
+///   ACTIVE      — KYC done, charges + payouts enabled
+///   RESTRICTED  — Stripe restricted the account (e.g. requirements past_due)
+///   REJECTED    — Stripe rejected; cannot accept payments
+enum StripeAccountStatus {
+  PENDING
+  ONBOARDING
+  ACTIVE
+  RESTRICTED
+  REJECTED
+}
+
+/// Mirror of Stripe's PaymentIntent status enum. The wire values match
+/// Stripe's `payment_intent.status` so webhook handlers can map directly.
+enum PaymentIntentStatus {
+  REQUIRES_PAYMENT_METHOD
+  REQUIRES_CONFIRMATION
+  REQUIRES_ACTION
+  PROCESSING
+  SUCCEEDED
+  REQUIRES_CAPTURE
+  CANCELED
+  FAILED
+}
+
 // ─── MODELS ───
 
 model User {
@@ -214,6 +243,15 @@ model Wholesaler {
   ratingAvg        Decimal?         @db.Decimal(3, 2)
   ratingCount      Int              @default(0)
   isVerified       Boolean          @default(false)
+  /// Stripe Connect (Express) account id. Set the first time we call
+  /// `accounts.create`. `@unique` so we can never end up with two wholesalers
+  /// pointing at the same Stripe account by mistake.
+  stripeAccountId      String?             @unique
+  /// Normalised Stripe account state. See StripeAccountStatus comments.
+  stripeAccountStatus  StripeAccountStatus @default(PENDING)
+  /// Set when the account first transitions to ACTIVE (charges_enabled +
+  /// payouts_enabled). Used in dashboards/audits.
+  stripeOnboardedAt    DateTime?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 
@@ -449,10 +487,14 @@ model Order {
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
-  retailer   Retailer   @relation(fields: [retailerId], references: [id])
-  wholesaler Wholesaler @relation(fields: [wholesalerId], references: [id])
-  user       User       @relation(fields: [userId], references: [id])
-  lines      OrderLine[]
+  retailer      Retailer             @relation(fields: [retailerId], references: [id])
+  wholesaler    Wholesaler           @relation(fields: [wholesalerId], references: [id])
+  user          User                 @relation(fields: [userId], references: [id])
+  lines         OrderLine[]
+  /// 1:1 with StripePaymentIntent. Optional today (scaffolding) — the next
+  /// PR wires checkout to require a successful PaymentIntent before the
+  /// order leaves PENDING.
+  paymentIntent StripePaymentIntent?
 
   @@index([retailerId, orderDate])
   @@index([wholesalerId, orderDate])
@@ -911,4 +953,38 @@ model IdempotencyKey {
   @@unique([scope, key])
   @@index([expiresAt])
   @@map("idempotency_keys")
+}
+
+/// Persistent record of a Stripe PaymentIntent associated with an Order.
+/// One-to-one with Order today — when we move to "auth-at-checkout, capture-on-
+/// ship" we may have multiple intents per order (auth + recapture); deferring
+/// that until the real integration lands.
+///
+/// Money fields stay in Prisma.Decimal; conversion to integer cents is done
+/// only at the Stripe API boundary in `src/lib/stripe/payments.ts`.
+model StripePaymentIntent {
+  id              String              @id @default(cuid())
+  orderId         String              @unique
+  /// Stripe's `pi_*` id. Unique to defend against duplicate webhook inserts.
+  stripeIntentId  String              @unique
+  amount          Decimal             @db.Decimal(10, 2)
+  /// Platform fee retained on this charge — `application_fee_amount` on the
+  /// Stripe PaymentIntent. Computed from STRIPE_APPLICATION_FEE_BPS at create.
+  applicationFee  Decimal             @db.Decimal(10, 2)
+  currency        String              @default("usd")
+  status          PaymentIntentStatus @default(REQUIRES_PAYMENT_METHOD)
+  /// `client_secret` — required by Stripe.js / Elements on the buyer side.
+  /// Sensitive but not catastrophic; logger redaction config catches it.
+  clientSecret    String?
+  /// Last `last_payment_error.message` from Stripe, surfaced in the UI.
+  lastError       String?
+  capturedAt      DateTime?
+  refundedAt      DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@index([status, createdAt])
+  @@map("stripe_payment_intents")
 }

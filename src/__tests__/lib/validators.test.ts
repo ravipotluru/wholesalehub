@@ -446,6 +446,40 @@ describe('barcodeScanSchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('should accept optional lot/serial/expiration fields', () => {
+    const result = barcodeScanSchema.safeParse({
+      receiptId: 'rcp-1',
+      barcode: '012345678901',
+      lotNumber: 'LOT-2026-04',
+      serialNumber: 'SN-0001',
+      expirationDate: '2027-12-31T00:00:00.000Z',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.lotNumber).toBe('LOT-2026-04');
+      expect(result.data.serialNumber).toBe('SN-0001');
+      expect(result.data.expirationDate).toBe('2027-12-31T00:00:00.000Z');
+    }
+  });
+
+  it('should reject malformed expirationDate', () => {
+    const result = barcodeScanSchema.safeParse({
+      receiptId: 'rcp-1',
+      barcode: '012345678901',
+      expirationDate: 'not-a-date',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('should reject empty lotNumber', () => {
+    const result = barcodeScanSchema.safeParse({
+      receiptId: 'rcp-1',
+      barcode: '012345678901',
+      lotNumber: '',
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 // ─── orderStatusUpdateSchema ───

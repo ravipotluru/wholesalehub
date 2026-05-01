@@ -5,7 +5,8 @@ import { cn } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
+  /** `destructive` is an alias for `danger` (matches shadcn/ui naming). */
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'destructive';
   size?: 'sm' | 'md' | 'lg';
   isLoading?: boolean;
   leftIcon?: React.ReactNode;
@@ -20,7 +21,8 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       outline: 'border-2 border-brand-blue text-brand-blue hover:bg-brand-blue hover:text-white focus:ring-brand-blue',
       ghost: 'text-brand-teal hover:bg-brand-teal/10 focus:ring-brand-teal',
       danger: 'bg-status-error text-white hover:bg-red-600 focus:ring-status-error',
-    };
+      destructive: 'bg-status-error text-white hover:bg-red-600 focus:ring-status-error',
+    } as const;
 
     const sizes = {
       sm: 'px-3 py-1.5 text-sm',

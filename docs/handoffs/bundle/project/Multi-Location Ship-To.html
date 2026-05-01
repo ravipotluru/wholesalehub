@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Multi-Location Ship-To — WholesaleHub</title>
+<link rel="stylesheet" href="_kit.css" />
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  body { background:#EFF1F4; }
+  .shell { max-width:1280px; margin:0 auto; padding:32px 24px 64px; }
+  .states { display:flex; flex-direction:column; gap:48px; }
+  .state-label { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .state-label .num { font-family:var(--font-mono); font-size:11px; font-weight:600; background:var(--brand-blue); color:#fff; border-radius:9999px; padding:2px 8px; }
+  .state-label .ttl { font-size:13px; font-weight:600; color:var(--dark); }
+  .state-label .meta { font-size:12px; color:var(--gray-500); }
+  .frame { background:#fff; border:1px solid var(--gray-200); border-radius:12px; overflow:hidden; box-shadow:var(--shadow-sm); }
+  .frame-head { height:36px; background:#fff; border-bottom:1px solid var(--gray-200); display:flex; align-items:center; gap:6px; padding:0 14px; }
+  .frame-head .tl { width:10px; height:10px; border-radius:50%; background:#E5E7EB; }
+  .frame-head .crumb { margin-left:14px; font-size:12px; color:var(--gray-500); }
+  .frame-head .crumb .here { color:var(--dark); font-weight:500; }
+  .frame-body { padding:32px 40px 48px; background:#FAFBFD; }
+  .ph { max-width:1000px; margin:0 auto 22px; }
+  .ph h1 { margin:0; font-size:26px; font-weight:700; letter-spacing:-0.01em; }
+  .ph .sub { margin-top:6px; font-size:14px; color:var(--gray-500); line-height:1.5; max-width:680px; }
+  .container { max-width:1000px; margin:0 auto; }
+
+  /* Location card grid */
+  .loc-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:14px; }
+  .loc-card { background:#fff; border:1px solid var(--gray-200); border-radius:12px; padding:18px 20px; position:relative; }
+  .loc-card.primary { border-color:rgba(30,77,140,.3); box-shadow:0 0 0 3px rgba(30,77,140,.06); }
+  .loc-card .badge-row { display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap; }
+  .loc-card h3 { margin:0; font-size:16px; font-weight:600; }
+  .loc-card .addr { font-size:13px; color:var(--gray-500); line-height:1.5; margin-top:4px; }
+  .loc-card .addr .mono { font-family:var(--font-mono); }
+  .loc-card .meta-row { display:flex; gap:14px; margin-top:14px; padding-top:14px; border-top:1px solid var(--gray-100); font-size:12px; color:var(--gray-500); flex-wrap:wrap; }
+  .loc-card .meta-row .k { display:flex; align-items:center; gap:5px; }
+  .loc-card .meta-row .k svg { width:13px; height:13px; }
+  .loc-card .actions { position:absolute; top:14px; right:14px; display:flex; gap:4px; }
+  .loc-card .actions button { background:none; border:0; padding:6px; border-radius:6px; cursor:pointer; color:var(--gray-500); }
+  .loc-card .actions button:hover { background:var(--gray-100); color:var(--dark); }
+  .loc-card .license-line { display:flex; align-items:center; gap:6px; margin-top:8px; font-size:11px; }
+  .loc-card .license-line .ok { color:var(--success); }
+  .loc-card .license-line .warn { color:var(--status-warning); }
+  .loc-card .license-line svg { width:12px; height:12px; }
+
+  .add-loc-card { background:#fff; border:2px dashed var(--gray-300); border-radius:12px; padding:36px 20px; text-align:center; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; cursor:pointer; transition:all var(--dur-base); min-height:180px; }
+  .add-loc-card:hover { border-color:var(--brand-blue); background:rgba(30,77,140,.02); }
+  .add-loc-card .ic { width:42px; height:42px; border-radius:50%; background:rgba(30,77,140,.08); color:var(--brand-blue); display:flex; align-items:center; justify-content:center; }
+  .add-loc-card .h { font-size:14px; font-weight:600; }
+  .add-loc-card .s { font-size:12px; color:var(--gray-500); }
+
+  /* Toolbar */
+  .toolbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; gap:12px; flex-wrap:wrap; }
+  .toolbar .search-wrap { flex:1; max-width:320px; position:relative; }
+  .toolbar .search-wrap input { width:100%; padding:8px 12px 8px 36px; border:1px solid var(--border-3); border-radius:8px; font-size:13px; }
+  .toolbar .search-wrap svg { position:absolute; left:11px; top:50%; transform:translateY(-50%); width:14px; height:14px; color:var(--gray-400); }
+
+  /* Checkout: ship-to selector */
+  .checkout-grid { display:grid; grid-template-columns:1fr 340px; gap:18px; align-items:start; }
+  @media (max-width:880px) { .checkout-grid { grid-template-columns:1fr; } }
+  .checkout-step { background:#fff; border:1px solid var(--gray-200); border-radius:12px; padding:20px 22px; margin-bottom:14px; }
+  .checkout-step.active { border-color:rgba(30,77,140,.4); box-shadow:0 0 0 3px rgba(30,77,140,.06); }
+  .checkout-step .hd { display:flex; align-items:center; gap:12px; margin-bottom:10px; }
+  .checkout-step .hd .n { width:24px; height:24px; border-radius:50%; background:var(--gray-200); color:var(--gray-500); font-family:var(--font-mono); font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+  .checkout-step.done .hd .n { background:var(--success); color:#fff; }
+  .checkout-step.active .hd .n { background:var(--brand-blue); color:#fff; }
+  .checkout-step .hd h3 { margin:0; font-size:15px; font-weight:600; }
+  .checkout-step .hd .right { margin-left:auto; font-size:12px; color:var(--brand-teal); cursor:pointer; font-weight:500; }
+
+  /* Shipping mode tabs */
+  .ship-mode { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:14px; }
+  .ship-mode .opt { padding:14px; border:2px solid var(--gray-200); border-radius:10px; cursor:pointer; display:flex; gap:12px; align-items:flex-start; transition:all var(--dur-base); }
+  .ship-mode .opt.active { border-color:var(--brand-blue); background:rgba(30,77,140,.04); }
+  .ship-mode .opt .radio { width:18px; height:18px; border-radius:50%; border:2px solid var(--gray-300); flex-shrink:0; margin-top:1px; position:relative; }
+  .ship-mode .opt.active .radio { border-color:var(--brand-blue); }
+  .ship-mode .opt.active .radio::after { content:""; position:absolute; inset:3px; border-radius:50%; background:var(--brand-blue); }
+  .ship-mode .opt .body .ttl { font-size:13px; font-weight:600; }
+  .ship-mode .opt .body .desc { font-size:12px; color:var(--gray-500); margin-top:2px; line-height:1.4; }
+
+  /* Single ship-to picker */
+  .picker { border:1px solid var(--gray-200); border-radius:10px; }
+  .picker .row { padding:14px 16px; display:flex; align-items:center; gap:12px; border-bottom:1px solid var(--gray-100); cursor:pointer; }
+  .picker .row:last-child { border-bottom:0; }
+  .picker .row.selected { background:rgba(30,77,140,.04); }
+  .picker .row .radio { width:18px; height:18px; border-radius:50%; border:2px solid var(--gray-300); flex-shrink:0; position:relative; }
+  .picker .row.selected .radio { border-color:var(--brand-blue); }
+  .picker .row.selected .radio::after { content:""; position:absolute; inset:3px; border-radius:50%; background:var(--brand-blue); }
+  .picker .row .body { flex:1; min-width:0; }
+  .picker .row .name { font-size:13px; font-weight:600; display:flex; align-items:center; gap:8px; }
+  .picker .row .addr { font-size:12px; color:var(--gray-500); margin-top:2px; }
+  .picker .row .badge { font-size:9px; padding:1px 6px; }
+  .picker .row .right-meta { font-size:11px; color:var(--gray-500); text-align:right; flex-shrink:0; }
+  .picker .row .right-meta .eta { font-weight:600; color:var(--dark); }
+  .picker .row.disabled { opacity:.5; cursor:not-allowed; background:rgba(231,76,60,.02); }
+  .picker .row.disabled .name::after { content:"Cannot ship — license expired"; margin-left:auto; font-weight:500; color:var(--status-error); font-size:11px; }
+
+  /* Split mode allocator */
+  .split-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .split-table th { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--gray-500); text-align:left; padding:10px 12px; background:var(--gray-50); border-bottom:1px solid var(--gray-200); }
+  .split-table th.center { text-align:center; }
+  .split-table td { padding:12px; border-bottom:1px solid var(--gray-100); vertical-align:middle; }
+  .split-table td.center { text-align:center; }
+  .split-table tr:last-child td { border-bottom:0; }
+  .split-table .prod-cell { display:flex; align-items:center; gap:10px; }
+  .split-table .prod-cell .imgph { width:36px; height:36px; border-radius:6px; background:var(--gray-100); flex-shrink:0; display:flex; align-items:center; justify-content:center; color:var(--gray-400); font-size:10px; font-weight:700; }
+  .split-table .prod-cell .nm { font-size:13px; font-weight:500; line-height:1.3; }
+  .split-table .prod-cell .sk { font-family:var(--font-mono); font-size:10px; color:var(--gray-500); margin-top:2px; }
+  .split-table .qty-cell input { width:48px; padding:5px 8px; border:1px solid var(--border-3); border-radius:6px; text-align:center; font-family:var(--font-mono); font-size:12px; }
+  .split-table .qty-cell input.err { border-color:var(--status-error); background:rgba(231,76,60,.05); color:var(--status-error); }
+  .split-table .total-row { background:var(--gray-50); }
+  .split-table .total-row td { font-weight:700; padding:10px 12px; }
+  .split-table .total-row .ok { color:var(--success); }
+  .split-table .total-row .err { color:var(--status-error); }
+  .alloc-warn { padding:10px 12px; background:rgba(231,76,60,.06); border:1px solid rgba(231,76,60,.25); border-radius:8px; font-size:12px; color:var(--status-error); display:flex; gap:8px; align-items:center; margin-top:10px; }
+  .alloc-warn svg { width:14px; height:14px; }
+
+  /* order summary side */
+  .summary-card { background:#fff; border:1px solid var(--gray-200); border-radius:12px; padding:18px 20px; position:sticky; top:80px; }
+  .summary-card h4 { margin:0 0 12px; font-size:14px; font-weight:600; }
+  .summary-card .line { display:flex; justify-content:space-between; padding:6px 0; font-size:13px; }
+  .summary-card .line.muted { color:var(--gray-500); }
+  .summary-card .line.total { padding-top:12px; margin-top:6px; border-top:1px solid var(--gray-200); font-weight:700; font-size:15px; }
+  .summary-card .line .v { font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
+  .summary-card .ship-pill { padding:8px 10px; background:rgba(30,77,140,.05); border-radius:8px; margin:8px 0 12px; display:flex; gap:8px; align-items:flex-start; font-size:12px; color:var(--gray-700); }
+  .summary-card .ship-pill svg { width:14px; height:14px; color:var(--brand-blue); flex-shrink:0; margin-top:1px; }
+
+  /* compact mobile picker */
+  .mobile-frame { max-width:380px; margin:0 auto; border:1px solid var(--gray-200); border-radius:24px; overflow:hidden; background:#fff; box-shadow:var(--shadow-md); }
+  .mobile-frame .top { height:40px; background:#fff; border-bottom:1px solid var(--gray-100); display:flex; align-items:center; padding:0 16px; gap:10px; }
+  .mobile-frame .top .back { color:var(--gray-500); }
+  .mobile-frame .top h2 { margin:0; font-size:15px; font-weight:600; flex:1; }
+  .mobile-frame .body { padding:16px; background:var(--bg-page); }
+  .m-loc-pill { background:#fff; border:1px solid var(--gray-200); border-radius:10px; padding:14px; display:flex; align-items:center; gap:10px; cursor:pointer; }
+  .m-loc-pill.selected { border-color:var(--brand-blue); background:rgba(30,77,140,.04); }
+  .m-loc-pill .body { flex:1; min-width:0; }
+  .m-loc-pill .nm { font-size:13px; font-weight:600; }
+  .m-loc-pill .ad { font-size:11px; color:var(--gray-500); margin-top:2px; }
+
+  /* Empty state CTA cards */
+  .empty-stage { background:#fff; border:1px solid var(--gray-200); border-radius:14px; padding:48px 28px; text-align:center; }
+  .empty-stage .ic { width:64px; height:64px; border-radius:50%; background:rgba(30,77,140,.08); color:var(--brand-blue); display:flex; align-items:center; justify-content:center; margin:0 auto 14px; }
+  .empty-stage .ic svg { width:28px; height:28px; }
+  .empty-stage h2 { margin:0; font-size:18px; font-weight:600; }
+  .empty-stage .desc { font-size:13px; color:var(--gray-500); margin-top:6px; max-width:480px; margin-left:auto; margin-right:auto; line-height:1.5; }
+  .empty-stage .ctas { margin-top:18px; display:inline-flex; gap:8px; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+<header style="margin-bottom:32px">
+  <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--gray-500);margin-bottom:6px">Retailer · Locations &amp; Checkout</div>
+  <h1 style="margin:0;font-size:28px;font-weight:700;letter-spacing:-0.01em">Multi-location ship-to</h1>
+  <div style="margin-top:6px;font-size:14px;color:var(--gray-500);max-width:680px;line-height:1.5">
+    Two screens for chain buyers: the location manager (CRUD their warehouses + retail stores), and the in-checkout selector (pick one location or split an order across many). 5 states.
+  </div>
+</header>
+
+<div class="states">
+
+  <!-- =================================================================== -->
+  <!-- STATE 1 — Locations manager · populated -->
+  <!-- =================================================================== -->
+  <section data-screen-label="01 Locations manager">
+    <div class="state-label">
+      <span class="num">01</span>
+      <span class="ttl">Locations manager · Populated</span>
+      <span class="meta">/settings/locations — 4 locations, 1 with expiring license</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head"><span class="tl"></span><span class="tl"></span><span class="tl"></span><span class="crumb">Settings / <span class="here">Locations</span></span></div>
+      <div class="frame-body">
+        <div class="ph">
+          <h1>Locations</h1>
+          <div class="sub">Each retail store or warehouse you ship to. Licenses are tied to the address — keep them current to avoid checkout holds.</div>
+        </div>
+        <div class="container">
+
+          <div class="toolbar">
+            <div class="search-wrap"><i data-lucide="search"></i><input placeholder="Search by name, address, or license…"></div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <span style="font-size:12px;color:var(--gray-500)"><strong style="color:var(--dark)">4</strong> locations · <strong style="color:var(--success)">3 active</strong></span>
+              <button class="btn btn-primary btn-sm"><i data-lucide="plus" style="width:14px;height:14px"></i>Add location</button>
+            </div>
+          </div>
+
+          <div class="loc-grid">
+
+            <div class="loc-card primary">
+              <div class="actions">
+                <button title="Edit"><i data-lucide="edit-2" style="width:14px;height:14px"></i></button>
+                <button title="More"><i data-lucide="more-horizontal" style="width:14px;height:14px"></i></button>
+              </div>
+              <div class="badge-row">
+                <span class="badge badge-blue">PRIMARY</span>
+                <span class="badge badge-success">VERIFIED</span>
+              </div>
+              <h3>Elm Street Smoke — Downtown</h3>
+              <div class="addr">2148 Euclid Ave<br>Cleveland, OH 44115<br><span class="mono">+1 (216) 555-0148</span></div>
+              <div class="license-line ok"><i data-lucide="shield-check"></i>OH OTP license · expires 12/31/2026</div>
+              <div class="meta-row">
+                <span class="k"><i data-lucide="package"></i>14 orders this month</span>
+                <span class="k"><i data-lucide="truck"></i>UPS Ground default</span>
+              </div>
+            </div>
+
+            <div class="loc-card">
+              <div class="actions">
+                <button><i data-lucide="edit-2" style="width:14px;height:14px"></i></button>
+                <button><i data-lucide="more-horizontal" style="width:14px;height:14px"></i></button>
+              </div>
+              <div class="badge-row">
+                <span class="badge badge-success">VERIFIED</span>
+              </div>
+              <h3>Elm Street Smoke — Westside</h3>
+              <div class="addr">10412 Lorain Ave<br>Cleveland, OH 44111<br><span class="mono">+1 (216) 555-0149</span></div>
+              <div class="license-line ok"><i data-lucide="shield-check"></i>OH OTP license · expires 12/31/2026</div>
+              <div class="meta-row">
+                <span class="k"><i data-lucide="package"></i>9 orders this month</span>
+                <span class="k"><i data-lucide="truck"></i>UPS Ground default</span>
+              </div>
+            </div>
+
+            <div class="loc-card">
+              <div class="actions">
+                <button><i data-lucide="edit-2" style="width:14px;height:14px"></i></button>
+                <button><i data-lucide="more-horizontal" style="width:14px;height:14px"></i></button>
+              </div>
+              <div class="badge-row">
+                <span class="badge badge-warning">LICENSE EXPIRING</span>
+              </div>
+              <h3>Elm Street Smoke — Lakewood</h3>
+              <div class="addr">14506 Detroit Ave<br>Lakewood, OH 44107<br><span class="mono">+1 (216) 555-0151</span></div>
+              <div class="license-line warn"><i data-lucide="alert-triangle"></i>License expires May 28 — 28 days · <a href="#">renew</a></div>
+              <div class="meta-row">
+                <span class="k"><i data-lucide="package"></i>6 orders this month</span>
+                <span class="k"><i data-lucide="truck"></i>FedEx default</span>
+              </div>
+            </div>
+
+            <div class="loc-card">
+              <div class="actions">
+                <button><i data-lucide="edit-2" style="width:14px;height:14px"></i></button>
+                <button><i data-lucide="more-horizontal" style="width:14px;height:14px"></i></button>
+              </div>
+              <div class="badge-row">
+                <span class="badge badge-gray">WAREHOUSE</span>
+                <span class="badge badge-success">VERIFIED</span>
+              </div>
+              <h3>Central Distribution</h3>
+              <div class="addr">42 Industrial Pkwy<br>Cleveland, OH 44135<br><span class="mono">+1 (216) 555-0102</span></div>
+              <div class="license-line ok"><i data-lucide="shield-check"></i>Resale only — non-retail</div>
+              <div class="meta-row">
+                <span class="k"><i data-lucide="package"></i>22 orders this month</span>
+                <span class="k"><i data-lucide="truck"></i>LTL freight default</span>
+              </div>
+            </div>
+
+            <div class="add-loc-card">
+              <div class="ic"><i data-lucide="plus"></i></div>
+              <div class="h">Add location</div>
+              <div class="s">Each location needs its own resale + tobacco license.</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================================================================== -->
+  <!-- STATE 2 — Empty manager (first-time chain buyer) -->
+  <!-- =================================================================== -->
+  <section data-screen-label="02 Empty manager">
+    <div class="state-label">
+      <span class="num">02</span>
+      <span class="ttl">Locations manager · Empty</span>
+      <span class="meta">First-time multi-location buyer · CTA + bulk import option</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head"><span class="tl"></span><span class="tl"></span><span class="tl"></span><span class="crumb">Settings / <span class="here">Locations</span></span></div>
+      <div class="frame-body">
+        <div class="ph">
+          <h1>Locations</h1>
+          <div class="sub">Manage every store and warehouse you ship to in one place.</div>
+        </div>
+        <div class="container">
+          <div class="empty-stage">
+            <div class="ic"><i data-lucide="map-pin"></i></div>
+            <h2>No additional locations yet</h2>
+            <div class="desc">You're set up to ship to your verified business address. Add more locations to ship to multiple stores in a single order, or to set per-location default carriers and licenses.</div>
+            <div class="ctas">
+              <button class="btn btn-primary"><i data-lucide="plus" style="width:14px;height:14px"></i>Add a location</button>
+              <button class="btn btn-secondary"><i data-lucide="upload-cloud" style="width:14px;height:14px"></i>Import from CSV</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================================================================== -->
+  <!-- STATE 3 — Checkout: single ship-to (default flow) -->
+  <!-- =================================================================== -->
+  <section data-screen-label="03 Checkout single ship-to">
+    <div class="state-label">
+      <span class="num">03</span>
+      <span class="ttl">Checkout · Single ship-to selector</span>
+      <span class="meta">/checkout — picking one location · live ETA + per-loc license check</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head"><span class="tl"></span><span class="tl"></span><span class="tl"></span><span class="crumb">Cart / <span class="here">Checkout</span></span></div>
+      <div class="frame-body">
+        <div class="ph">
+          <h1>Checkout</h1>
+          <div class="sub">Step 2 of 4 · Choose where this order ships.</div>
+        </div>
+        <div class="container">
+          <div class="checkout-grid">
+            <div>
+              <div class="checkout-step done">
+                <div class="hd"><div class="n"><i data-lucide="check" style="width:11px;height:11px"></i></div><h3>Cart reviewed</h3><span class="right">Edit</span></div>
+                <div style="font-size:13px;color:var(--gray-500)">12 items · 3 brands · subtotal $1,847.20</div>
+              </div>
+
+              <div class="checkout-step active">
+                <div class="hd"><div class="n">2</div><h3>Ship to</h3></div>
+
+                <div class="ship-mode">
+                  <div class="opt active">
+                    <div class="radio"></div>
+                    <div class="body">
+                      <div class="ttl">One location</div>
+                      <div class="desc">Single shipment, one carrier, one tracking number.</div>
+                    </div>
+                  </div>
+                  <div class="opt">
+                    <div class="radio"></div>
+                    <div class="body">
+                      <div class="ttl">Split across locations</div>
+                      <div class="desc">Allocate qty per location. Separate shipments &amp; tracking.</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="picker">
+                  <div class="row selected">
+                    <div class="radio"></div>
+                    <div class="body">
+                      <div class="name">Elm Street Smoke — Downtown <span class="badge badge-blue">PRIMARY</span></div>
+                      <div class="addr">2148 Euclid Ave, Cleveland, OH 44115</div>
+                    </div>
+                    <div class="right-meta">
+                      <div class="eta">Arrives Fri, May 3</div>
+                      <div>UPS Ground · $14.20</div>
+                    </div>
+                  </div>
+                  <div class="row">
+                    <div class="radio"></div>
+                    <div class="body">
+                      <div class="name">Elm Street Smoke — Westside</div>
+                      <div class="addr">10412 Lorain Ave, Cleveland, OH 44111</div>
+                    </div>
+                    <div class="right-meta">
+                      <div class="eta">Arrives Fri, May 3</div>
+                      <div>UPS Ground · $14.20</div>
+                    </div>
+                  </div>
+                  <div class="row disabled">
+                    <div class="radio"></div>
+                    <div class="body">
+                      <div class="name">Elm Street Smoke — Lakewood</div>
+                      <div class="addr">14506 Detroit Ave, Lakewood, OH 44107 · <span style="color:var(--status-error)">license expired May 28</span></div>
+                    </div>
+                    <div class="right-meta" style="color:var(--status-error)">Cannot ship</div>
+                  </div>
+                  <div class="row">
+                    <div class="radio"></div>
+                    <div class="body">
+                      <div class="name">Central Distribution <span class="badge badge-gray">WAREHOUSE</span></div>
+                      <div class="addr">42 Industrial Pkwy, Cleveland, OH 44135</div>
+                    </div>
+                    <div class="right-meta">
+                      <div class="eta">Arrives Mon, May 6</div>
+                      <div>LTL freight · $84.00</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="display:flex;gap:8px;margin-top:14px">
+                  <button class="btn btn-primary">Continue to payment<i data-lucide="arrow-right" style="width:14px;height:14px"></i></button>
+                  <button class="btn-text" style="height:40px;padding:0 14px;font-size:13px;color:var(--brand-teal);background:none;border:0;cursor:pointer;font-weight:500">+ Add a new location</button>
+                </div>
+              </div>
+
+              <div class="checkout-step">
+                <div class="hd"><div class="n">3</div><h3 style="color:var(--gray-500)">Payment</h3></div>
+              </div>
+              <div class="checkout-step">
+                <div class="hd"><div class="n">4</div><h3 style="color:var(--gray-500)">Review &amp; place</h3></div>
+              </div>
+            </div>
+
+            <aside>
+              <div class="summary-card">
+                <h4>Order summary</h4>
+                <div class="ship-pill">
+                  <i data-lucide="map-pin"></i>
+                  <div><strong style="color:var(--dark)">Shipping to:</strong><br>Elm Street Smoke — Downtown</div>
+                </div>
+                <div class="line"><span>Subtotal · 12 items</span><span class="v">$1,847.20</span></div>
+                <div class="line muted"><span>Volume discount (5%)</span><span class="v">−$92.36</span></div>
+                <div class="line"><span>Shipping · UPS Ground</span><span class="v">$14.20</span></div>
+                <div class="line"><span>Tax (resale exempt)</span><span class="v">$0.00</span></div>
+                <div class="line total"><span>Total</span><span class="v">$1,769.04</span></div>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================================================================== -->
+  <!-- STATE 4 — Checkout: split across locations -->
+  <!-- =================================================================== -->
+  <section data-screen-label="04 Checkout split">
+    <div class="state-label">
+      <span class="num">04</span>
+      <span class="ttl">Checkout · Split across locations</span>
+      <span class="meta">Allocator with running totals · over-allocation error caught inline</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head"><span class="tl"></span><span class="tl"></span><span class="tl"></span><span class="crumb">Cart / <span class="here">Checkout</span></span></div>
+      <div class="frame-body">
+        <div class="ph">
+          <h1>Checkout</h1>
+          <div class="sub">Step 2 of 4 · Allocate quantities to each location.</div>
+        </div>
+        <div class="container">
+          <div class="checkout-grid">
+            <div>
+              <div class="checkout-step done">
+                <div class="hd"><div class="n"><i data-lucide="check" style="width:11px;height:11px"></i></div><h3>Cart reviewed</h3><span class="right">Edit</span></div>
+                <div style="font-size:13px;color:var(--gray-500)">12 items · 3 brands · subtotal $1,847.20</div>
+              </div>
+
+              <div class="checkout-step active">
+                <div class="hd"><div class="n">2</div><h3>Ship to · split</h3></div>
+
+                <div class="ship-mode">
+                  <div class="opt"><div class="radio"></div><div class="body"><div class="ttl">One location</div><div class="desc">Single shipment, one carrier, one tracking number.</div></div></div>
+                  <div class="opt active"><div class="radio"></div><div class="body"><div class="ttl">Split across locations</div><div class="desc">Allocate qty per location. Separate shipments &amp; tracking.</div></div></div>
+                </div>
+
+                <div style="border:1px solid var(--gray-200);border-radius:10px;overflow:hidden">
+                  <table class="split-table">
+                    <thead>
+                      <tr>
+                        <th>Product</th>
+                        <th class="center">Cart</th>
+                        <th class="center">Downtown</th>
+                        <th class="center">Westside</th>
+                        <th class="center">Warehouse</th>
+                        <th class="center">Allocated</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>
+                          <div class="prod-cell">
+                            <div class="imgph">RZ</div>
+                            <div><div class="nm">Raz TN9000 · Watermelon Ice</div><div class="sk">RZ-TN9-WMI</div></div>
+                          </div>
+                        </td>
+                        <td class="center"><span class="numeric">6</span></td>
+                        <td class="qty-cell center"><input value="2"></td>
+                        <td class="qty-cell center"><input value="2"></td>
+                        <td class="qty-cell center"><input value="2"></td>
+                        <td class="center"><span class="numeric" style="color:var(--success);font-weight:700">6</span></td>
+                      </tr>
+                      <tr>
+                        <td>
+                          <div class="prod-cell">
+                            <div class="imgph">LM</div>
+                            <div><div class="nm">Lost Mary OS5000 · Blue Razz</div><div class="sk">LM-OS5-BR</div></div>
+                          </div>
+                        </td>
+                        <td class="center"><span class="numeric">4</span></td>
+                        <td class="qty-cell center"><input value="2"></td>
+                        <td class="qty-cell center"><input value="2"></td>
+                        <td class="qty-cell center"><input value="0"></td>
+                        <td class="center"><span class="numeric" style="color:var(--success);font-weight:700">4</span></td>
+                      </tr>
+                      <tr>
+                        <td>
+                          <div class="prod-cell">
+                            <div class="imgph">GB</div>
+                            <div><div class="nm">Geek Bar Pulse · Sour Apple</div><div class="sk">GB-PUL-SA</div></div>
+                          </div>
+                        </td>
+                        <td class="center"><span class="numeric">2</span></td>
+                        <td class="qty-cell center"><input value="2"></td>
+                        <td class="qty-cell center"><input value="1" class="err"></td>
+                        <td class="qty-cell center"><input value="0"></td>
+                        <td class="center"><span class="numeric" style="color:var(--status-error);font-weight:700">3 / 2</span></td>
+                      </tr>
+                    </tbody>
+                    <tfoot>
+                      <tr class="total-row">
+                        <td colspan="2">Per-location subtotal</td>
+                        <td class="center numeric">$648</td>
+                        <td class="center numeric">$540</td>
+                        <td class="center numeric">$280</td>
+                        <td class="center"></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                <div class="alloc-warn">
+                  <i data-lucide="alert-circle"></i>
+                  <span><strong>Geek Bar Pulse · Sour Apple</strong> is over-allocated — 3 units assigned but only 2 in cart. Reduce by 1 to continue.</span>
+                </div>
+
+                <div style="display:flex;gap:8px;margin-top:14px">
+                  <button class="btn btn-primary" disabled style="opacity:.5;cursor:not-allowed">Continue to payment</button>
+                  <button class="btn-text" style="height:40px;padding:0 14px;font-size:13px;color:var(--brand-teal);background:none;border:0;cursor:pointer;font-weight:500">Auto-balance</button>
+                </div>
+              </div>
+
+              <div class="checkout-step">
+                <div class="hd"><div class="n">3</div><h3 style="color:var(--gray-500)">Payment</h3></div>
+              </div>
+            </div>
+
+            <aside>
+              <div class="summary-card">
+                <h4>Split summary</h4>
+                <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
+                  <div style="padding:8px 10px;background:rgba(30,77,140,.04);border-radius:8px;font-size:12px">
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                      <strong style="color:var(--dark)">Downtown</strong>
+                      <span class="numeric" style="color:var(--gray-500)">$648 · 4 items</span>
+                    </div>
+                    <div style="color:var(--gray-500);margin-top:2px">UPS Ground · arrives Fri May 3</div>
+                  </div>
+                  <div style="padding:8px 10px;background:rgba(30,77,140,.04);border-radius:8px;font-size:12px">
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                      <strong style="color:var(--dark)">Westside</strong>
+                      <span class="numeric" style="color:var(--gray-500)">$540 · 4 items</span>
+                    </div>
+                    <div style="color:var(--gray-500);margin-top:2px">UPS Ground · arrives Fri May 3</div>
+                  </div>
+                  <div style="padding:8px 10px;background:rgba(30,77,140,.04);border-radius:8px;font-size:12px">
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                      <strong style="color:var(--dark)">Warehouse</strong>
+                      <span class="numeric" style="color:var(--gray-500)">$280 · 2 items</span>
+                    </div>
+                    <div style="color:var(--gray-500);margin-top:2px">LTL freight · arrives Mon May 6</div>
+                  </div>
+                </div>
+                <div class="line"><span>Subtotal</span><span class="v">$1,847.20</span></div>
+                <div class="line"><span>Shipping · 3 shipments</span><span class="v">$112.40</span></div>
+                <div class="line"><span>Tax</span><span class="v">$0.00</span></div>
+                <div class="line total"><span>Total</span><span class="v">$1,959.60</span></div>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================================================================== -->
+  <!-- STATE 5 — Mobile: ship-to picker (sheet) -->
+  <!-- =================================================================== -->
+  <section data-screen-label="05 Mobile picker">
+    <div class="state-label">
+      <span class="num">05</span>
+      <span class="ttl">Mobile · Ship-to picker sheet</span>
+      <span class="meta">Compact card list with selected state &amp; license-status pills</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head"><span class="tl"></span><span class="tl"></span><span class="tl"></span><span class="crumb">Mobile · 380px</span></div>
+      <div class="frame-body" style="padding:32px 16px 40px;background:#EFF1F4">
+        <div class="mobile-frame">
+          <div class="top">
+            <span class="back"><i data-lucide="chevron-left" style="width:18px;height:18px"></i></span>
+            <h2>Ship to</h2>
+            <span style="font-size:12px;color:var(--brand-teal);font-weight:500">+ New</span>
+          </div>
+          <div class="body">
+            <div style="font-size:12px;color:var(--gray-500);margin-bottom:10px">Choose a location for this order. Carriers and ETA will recalculate.</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div class="m-loc-pill selected">
+                <div class="body">
+                  <div class="nm">Downtown <span class="badge badge-blue">PRIMARY</span></div>
+                  <div class="ad">2148 Euclid Ave, Cleveland</div>
+                  <div style="font-size:10px;color:var(--success);font-weight:600;margin-top:4px;display:flex;align-items:center;gap:4px"><i data-lucide="check" style="width:11px;height:11px"></i>UPS Ground · arrives Fri May 3</div>
+                </div>
+                <i data-lucide="check-circle-2" style="width:20px;height:20px;color:var(--brand-blue)"></i>
+              </div>
+              <div class="m-loc-pill">
+                <div class="body">
+                  <div class="nm">Westside</div>
+                  <div class="ad">10412 Lorain Ave, Cleveland</div>
+                  <div style="font-size:10px;color:var(--success);font-weight:600;margin-top:4px;display:flex;align-items:center;gap:4px"><i data-lucide="check" style="width:11px;height:11px"></i>UPS Ground · arrives Fri May 3</div>
+                </div>
+                <div style="width:18px;height:18px;border:2px solid var(--gray-300);border-radius:50%"></div>
+              </div>
+              <div class="m-loc-pill" style="opacity:.6">
+                <div class="body">
+                  <div class="nm" style="color:var(--gray-500)">Lakewood</div>
+                  <div class="ad">14506 Detroit Ave, Lakewood</div>
+                  <div style="font-size:10px;color:var(--status-error);font-weight:600;margin-top:4px;display:flex;align-items:center;gap:4px"><i data-lucide="alert-triangle" style="width:11px;height:11px"></i>License expired — cannot ship</div>
+                </div>
+                <i data-lucide="lock" style="width:16px;height:16px;color:var(--gray-400)"></i>
+              </div>
+              <div class="m-loc-pill">
+                <div class="body">
+                  <div class="nm">Central Distribution <span class="badge badge-gray">WAREHOUSE</span></div>
+                  <div class="ad">42 Industrial Pkwy</div>
+                  <div style="font-size:10px;color:var(--gray-500);font-weight:500;margin-top:4px">LTL freight · arrives Mon May 6 · +$84</div>
+                </div>
+                <div style="width:18px;height:18px;border:2px solid var(--gray-300);border-radius:50%"></div>
+              </div>
+            </div>
+            <button class="btn btn-primary" style="width:100%;margin-top:14px">Use Downtown<i data-lucide="arrow-right" style="width:14px;height:14px"></i></button>
+            <button style="background:none;border:0;color:var(--brand-teal);font-size:13px;font-weight:500;width:100%;margin-top:8px;padding:8px;cursor:pointer">Split across locations instead →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</div>
+<script>if (window.lucide) lucide.createIcons();</script>
+</body>
+</html>

@@ -1,0 +1,127 @@
+/* =========================================================================
+   Shared UI kit primitives. Used by ui_kits/marketplace/* and ui_kits/operator/*.
+   Imports the design tokens, then defines the actual component classes used in
+   the codebase (buttons, inputs, sidebar, table, etc).
+   ========================================================================= */
+@import url('./colors_and_type.css');
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+
+/* ------------ App shell ------------
+   DESIGN.md §5: sidebar w-60 (240px) on --light, NOT dark blue.
+   Top bar h-16, px-6, bg-surface, border-b gray-200. */
+.app { display:grid; grid-template-columns: 240px 1fr; min-height:100vh; background:var(--bg-page); }
+
+.sidebar { background:var(--light); color:var(--dark); display:flex; flex-direction:column; border-right:1px solid var(--gray-200); }
+.sidebar .brand { display:flex; align-items:center; gap:10px; padding:18px 20px; border-bottom:1px solid var(--gray-200); }
+.sidebar .brand .mark { width:32px; height:32px; background:var(--brand-blue); border-radius:8px; display:flex; align-items:center; justify-content:center; color:#fff; }
+.sidebar .brand .wm { font-weight:700; font-size:16px; letter-spacing:-0.01em; color:var(--dark); }
+.sidebar .brand .wm small { display:block; font-weight:500; font-size:10px; color:var(--gray-500); letter-spacing:0.05em; text-transform:uppercase; margin-top:2px; }
+.sidebar nav { padding:14px 12px; display:flex; flex-direction:column; gap:2px; flex:1; }
+.sidebar nav .group { font-size:10px; text-transform:uppercase; letter-spacing:0.1em; color:var(--gray-500); padding:14px 12px 6px; }
+.sidebar nav a { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:8px; color:var(--gray-500); font-size:14px; font-weight:500; transition:background var(--dur-base), color var(--dur-base); }
+.sidebar nav a:hover { background:#fff; color:var(--dark); }
+.sidebar nav a.active { background:rgba(30,77,140,.10); color:var(--brand-blue); font-weight:600; }
+.sidebar nav a svg { width:18px; height:18px; }
+.sidebar .foot { padding:14px 20px; border-top:1px solid var(--gray-200); font-size:11px; color:var(--gray-500); }
+
+.main { display:flex; flex-direction:column; min-width:0; }
+.header { height:var(--header-h); background:#fff; border-bottom:1px solid var(--border-2); display:flex; align-items:center; gap:16px; padding:0 24px; position:sticky; top:0; z-index:30; }
+.header .search { flex:1; max-width:560px; position:relative; }
+.header .search input { width:100%; height:40px; padding:0 14px 0 38px; border:1px solid var(--border-3); border-radius:8px; font-size:14px; font-family:inherit; }
+.header .search input:focus { outline:none; border-color:var(--brand-teal); box-shadow:0 0 0 2px rgba(32,163,158,.25); }
+.header .search svg { position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--gray-400); width:18px; height:18px; }
+.header .spacer { flex:1; }
+.header .icon-btn { width:36px; height:36px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; color:var(--gray-500); position:relative; cursor:pointer; }
+.header .icon-btn:hover { background:var(--gray-100); }
+.header .icon-btn .dot { position:absolute; top:6px; right:6px; width:8px; height:8px; background:var(--brand-orange); border-radius:50%; border:2px solid #fff; }
+.header .avatar { width:36px; height:36px; border-radius:50%; background:var(--brand-blue); color:#fff; display:inline-flex; align-items:center; justify-content:center; font-weight:600; font-size:13px; }
+.header .cart-btn { display:inline-flex; align-items:center; gap:8px; padding:8px 14px; background:var(--brand-orange); color:#fff; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; }
+.header .cart-btn .count { background:#fff; color:var(--brand-orange); border-radius:9999px; padding:0 8px; font-size:12px; font-weight:700; min-width:20px; text-align:center; }
+
+.content { padding:24px; flex:1; }
+
+/* ------------ Page heading ------------ */
+.pagehead { display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:20px; }
+.pagehead h1 { margin:0; font-size:24px; font-weight:700; letter-spacing:-0.01em; }
+.pagehead .sub { color:var(--gray-500); font-size:14px; margin-top:4px; }
+
+/* ------------ Buttons ------------
+   DESIGN.md §2 + §4:
+     - Primary = brand-blue (default action throughout the app)
+     - Critical CTA = brand-orange (max ONE per screen, e.g. "Place order")
+     - Secondary = ghost border + dark text on light bg
+     - Destructive = status-error
+     - Link / ghost = brand-teal */
+.btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; height:40px; padding:0 18px; border-radius:8px; font-weight:600; font-size:14px; border:0; cursor:pointer; transition:all var(--dur-base); font-family:inherit; line-height:1; }
+.btn-primary { background:var(--brand-blue); color:#fff; }
+.btn-primary:hover { background:var(--brand-blue-light); }
+.btn-cta { background:var(--brand-orange); color:#fff; }
+.btn-cta:hover { background:var(--brand-orange-dark); }
+.btn-secondary { background:transparent; color:var(--dark); border:1px solid var(--gray-300); }
+.btn-secondary:hover { background:var(--gray-50); }
+.btn-outline { background:transparent; color:var(--brand-blue); border:2px solid var(--brand-blue); padding:0 16px; }
+.btn-outline:hover { background:var(--brand-blue); color:#fff; }
+.btn-ghost { background:transparent; color:var(--brand-teal); }
+.btn-ghost:hover { background:rgba(32,163,158,.10); }
+.btn-destructive { background:var(--status-error); color:#fff; }
+.btn-destructive:hover { background:#C0392B; }
+.btn-sm { height:32px; padding:0 12px; font-size:13px; }
+.btn-lg { height:48px; padding:0 22px; font-size:15px; }
+.btn-block { width:100%; }
+
+/* ------------ Card ------------
+   DESIGN.md §4: surface, border gray-200, radius rounded-lg (8px), shadow-sm. */
+.card { background:#fff; border:1px solid var(--gray-200); border-radius:8px; box-shadow:var(--shadow-sm); }
+.card-pad { padding:24px; }
+.card-pad-sm { padding:16px; }
+.card-head { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--gray-200); }
+.card-head h3 { margin:0; font-size:18px; font-weight:600; }
+.card-body { padding:20px; }
+
+/* ------------ Badge / status ------------ */
+.badge { display:inline-flex; align-items:center; gap:4px; border-radius:9999px; padding:3px 10px; font-size:11px; font-weight:600; }
+.badge-success { background:rgba(0,184,148,.1); color:var(--success); }
+.badge-warning { background:rgba(243,156,18,.1); color:var(--status-warning); }
+.badge-error   { background:rgba(231,76,60,.1); color:var(--status-error); }
+.badge-info    { background:rgba(52,152,219,.1); color:var(--status-info); }
+.badge-blue    { background:rgba(30,77,140,.1); color:var(--brand-blue); }
+.badge-teal    { background:rgba(32,163,158,.1); color:var(--brand-teal); }
+.badge-gray    { background:var(--gray-100); color:var(--gray-700); }
+.badge-best { background:var(--success); color:#fff; text-transform:uppercase; font-weight:700; letter-spacing:0.04em; padding:3px 10px; }
+.dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+
+/* ------------ KPI ------------ */
+.kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:20px; }
+.kpi { background:#fff; border:1px solid var(--border-1); border-radius:12px; padding:18px 20px; }
+.kpi .lbl { font-size:12px; font-weight:500; color:var(--gray-500); text-transform:uppercase; letter-spacing:0.05em; }
+.kpi .val { font-family:var(--font-mono); font-size:24px; font-weight:700; color:var(--dark); font-variant-numeric:tabular-nums; margin-top:4px; }
+.kpi .delta-up { font-size:12px; color:var(--success); margin-top:4px; }
+.kpi .delta-down { font-size:12px; color:var(--status-error); margin-top:4px; }
+
+/* ------------ Table ------------ */
+table.dt { width:100%; border-collapse:collapse; }
+table.dt th { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--gray-500); text-align:left; padding:12px 16px; background:var(--gray-50); border-bottom:1px solid var(--border-2); }
+table.dt th.right, table.dt td.right { text-align:right; }
+table.dt td { font-size:14px; padding:14px 16px; border-bottom:1px solid var(--border-1); color:var(--dark); }
+table.dt tr:hover td { background:var(--light); }
+table.dt td.num { font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
+table.dt td.muted { color:var(--gray-500); }
+
+/* ------------ Misc utilities ------------ */
+.row-flex { display:flex; align-items:center; gap:12px; }
+.stack { display:flex; flex-direction:column; gap:14px; }
+.muted { color:var(--gray-500); }
+.numeric { font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
+.divider { height:1px; background:var(--border-1); margin:14px 0; }
+
+/* Form */
+.field { display:block; }
+.field .lbl { display:block; font-size:14px; font-weight:500; color:var(--dark); margin-bottom:6px; }
+.field input, .field select, .field textarea { width:100%; padding:11px 14px; border:1px solid var(--border-3); border-radius:8px; font-size:14px; font-family:inherit; color:var(--dark); }
+.field input:focus, .field select:focus, .field textarea:focus { outline:none; border-color:var(--brand-teal); box-shadow:0 0 0 2px rgba(32,163,158,.25); }
+.field .help { font-size:12px; color:var(--gray-500); margin-top:4px; }
+
+/* image placeholder = uppercase letter on gray square */
+.imgph { background:var(--gray-100); display:flex; align-items:center; justify-content:center; color:var(--gray-400); font-weight:700; font-size:36px; }

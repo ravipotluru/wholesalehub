@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Buyer Verification — WholesaleHub</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="stylesheet" href="_kit.css" />
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  body { background:#EFF1F4; }
+  .shell { max-width:1280px; margin:0 auto; padding:32px 24px 64px; }
+  .states { display:flex; flex-direction:column; gap:48px; }
+  .state-label { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .state-label .num { font-family:var(--font-mono); font-size:11px; font-weight:600; background:var(--brand-blue); color:#fff; border-radius:9999px; padding:2px 8px; }
+  .state-label .ttl { font-size:13px; font-weight:600; color:var(--dark); }
+  .state-label .meta { font-size:12px; color:var(--gray-500); }
+
+  .frame { background:#fff; border:1px solid var(--gray-200); border-radius:12px; overflow:hidden; box-shadow:var(--shadow-sm); }
+  .frame-head { height:36px; background:#fff; border-bottom:1px solid var(--gray-200); display:flex; align-items:center; gap:6px; padding:0 14px; }
+  .frame-head .tl { width:10px; height:10px; border-radius:50%; background:#E5E7EB; }
+  .frame-head .crumb { margin-left:14px; font-size:12px; color:var(--gray-500); }
+  .frame-head .crumb .here { color:var(--dark); font-weight:500; }
+  .frame-body { padding:32px 40px 48px; background:#FAFBFD; }
+
+  .ph { max-width:840px; margin:0 auto 22px; }
+  .ph h1 { margin:0; font-size:26px; font-weight:700; letter-spacing:-0.01em; }
+  .ph .sub { margin-top:6px; font-size:14px; color:var(--gray-500); line-height:1.5; max-width:680px; }
+
+  .container { max-width:840px; margin:0 auto; }
+
+  /* Status hero */
+  .status-hero {
+    background:#fff; border:1px solid var(--gray-200); border-radius:14px; padding:22px 24px;
+    display:flex; align-items:flex-start; gap:18px; margin-bottom:20px;
+  }
+  .status-hero .ic { width:52px; height:52px; border-radius:12px; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
+  .status-hero .ic svg { width:24px; height:24px; }
+  .status-hero .ic.start { background:rgba(30,77,140,.1); color:var(--brand-blue); }
+  .status-hero .ic.pending { background:rgba(243,156,18,.1); color:var(--status-warning); }
+  .status-hero .ic.approved { background:rgba(0,184,148,.12); color:var(--success); }
+  .status-hero .ic.rejected { background:rgba(231,76,60,.1); color:var(--status-error); }
+  .status-hero .body { flex:1; min-width:0; }
+  .status-hero h2 { font-size:18px; font-weight:600; margin:0 0 4px; }
+  .status-hero .desc { font-size:13px; color:var(--gray-500); line-height:1.5; }
+  .status-hero .desc strong { color:var(--dark); font-weight:600; }
+  .status-hero.rejected { border-color:rgba(231,76,60,.3); background:rgba(231,76,60,.03); }
+  .status-hero.approved { border-color:rgba(0,184,148,.3); background:rgba(0,184,148,.04); }
+  .status-hero.pending { border-color:rgba(243,156,18,.3); background:rgba(243,156,18,.03); }
+
+  /* Progress checklist */
+  .checklist { background:#fff; border:1px solid var(--gray-200); border-radius:12px; overflow:hidden; }
+  .checklist .hd { padding:14px 20px; border-bottom:1px solid var(--gray-200); display:flex; align-items:center; justify-content:space-between; }
+  .checklist .hd h3 { margin:0; font-size:15px; font-weight:600; }
+  .checklist .hd .progress { font-size:12px; color:var(--gray-500); display:flex; align-items:center; gap:8px; }
+  .checklist .hd .pbar { width:80px; height:6px; background:var(--gray-100); border-radius:9999px; overflow:hidden; }
+  .checklist .hd .pbar .fill { height:100%; background:var(--brand-blue); border-radius:9999px; }
+
+  .step-row { padding:18px 20px; border-bottom:1px solid var(--gray-100); display:flex; align-items:flex-start; gap:14px; }
+  .step-row:last-child { border-bottom:0; }
+  .step-row .check { width:24px; height:24px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-family:var(--font-mono); font-size:11px; font-weight:700; }
+  .step-row .check.done { background:var(--success); color:#fff; }
+  .step-row .check.todo { background:var(--gray-100); color:var(--gray-500); border:1px dashed var(--gray-300); }
+  .step-row .check.current { background:var(--brand-blue); color:#fff; }
+  .step-row .check.warn { background:var(--status-warning); color:#fff; }
+  .step-row .check.err { background:var(--status-error); color:#fff; }
+  .step-row .body { flex:1; min-width:0; }
+  .step-row .ttl { font-size:14px; font-weight:600; color:var(--dark); display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .step-row .desc { font-size:12px; color:var(--gray-500); margin-top:3px; line-height:1.5; }
+  .step-row .meta-line { font-size:12px; color:var(--gray-500); margin-top:8px; display:flex; gap:12px; flex-wrap:wrap; }
+  .step-row .meta-line .k { font-family:var(--font-mono); }
+  .step-row .actions { display:flex; gap:6px; align-items:center; flex-shrink:0; }
+
+  /* Form fields embedded in step */
+  .field-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; margin-top:12px; }
+  .field-grid .full { grid-column:1/-1; }
+  .field-row { display:flex; flex-direction:column; gap:5px; }
+  .field-row label { font-size:12px; font-weight:500; color:var(--dark); display:flex; align-items:center; gap:5px; }
+  .field-row label .req { color:var(--status-error); font-weight:700; }
+  .field-row input, .field-row select { padding:9px 12px; border:1px solid var(--border-3); border-radius:8px; font-size:13px; font-family:inherit; }
+  .field-row input.mono { font-family:var(--font-mono); }
+  .field-row input:focus, .field-row select:focus { outline:none; border-color:var(--brand-teal); box-shadow:0 0 0 2px rgba(32,163,158,.25); }
+  .field-row .help { font-size:11px; color:var(--gray-500); }
+  .field-row.err input { border-color:var(--status-error); }
+  .field-row .err-msg { font-size:11px; color:var(--status-error); display:flex; align-items:center; gap:4px; }
+  .field-row .err-msg svg { width:12px; height:12px; }
+
+  /* File uploader */
+  .uploader { border:2px dashed var(--gray-300); border-radius:10px; padding:20px; text-align:center; transition:all var(--dur-base); margin-top:10px; background:var(--gray-50); }
+  .uploader.uploaded { border-style:solid; border-color:rgba(0,184,148,.3); background:rgba(0,184,148,.04); padding:14px 18px; text-align:left; display:flex; align-items:center; gap:14px; }
+  .uploader .ic-up { width:36px; height:36px; border-radius:8px; background:#fff; color:var(--brand-blue); display:inline-flex; align-items:center; justify-content:center; margin-bottom:8px; }
+  .uploader .ic-up svg { width:18px; height:18px; }
+  .uploader .h-up { font-size:13px; font-weight:600; }
+  .uploader .h-up a { color:var(--brand-teal); cursor:pointer; }
+  .uploader .sub-up { font-size:11px; color:var(--gray-500); margin-top:2px; }
+  .uploader.uploaded .file-icon { width:36px; height:36px; border-radius:8px; background:#fff; color:var(--success); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .uploader.uploaded .file-icon svg { width:18px; height:18px; }
+  .uploader.uploaded .file-meta { flex:1; min-width:0; }
+  .uploader.uploaded .file-name { font-size:13px; font-weight:600; color:var(--dark); }
+  .uploader.uploaded .file-sub { font-size:11px; color:var(--gray-500); margin-top:1px; font-family:var(--font-mono); }
+  .uploader.uploaded .replace { font-size:12px; color:var(--brand-teal); font-weight:500; cursor:pointer; padding:6px 10px; border-radius:6px; }
+  .uploader.uploaded .replace:hover { background:rgba(32,163,158,.08); }
+
+  /* Upload in-progress */
+  .uploader.uploading { border-style:solid; border-color:rgba(30,77,140,.3); background:rgba(30,77,140,.03); padding:14px 18px; text-align:left; display:flex; align-items:center; gap:14px; }
+  .uploader.uploading .file-icon { background:rgba(30,77,140,.1); color:var(--brand-blue); }
+  .uploader.uploading .pbar { height:5px; background:rgba(30,77,140,.15); border-radius:9999px; overflow:hidden; margin-top:6px; }
+  .uploader.uploading .pbar .fill { height:100%; background:var(--brand-blue); border-radius:9999px; transition:width var(--dur-slow); }
+
+  /* Timeline */
+  .timeline { background:#fff; border:1px solid var(--gray-200); border-radius:12px; overflow:hidden; }
+  .timeline .hd { padding:14px 20px; border-bottom:1px solid var(--gray-200); }
+  .timeline .hd h3 { margin:0; font-size:14px; font-weight:600; }
+  .timeline .events { padding:18px 20px 20px; }
+  .timeline .event { display:flex; gap:14px; position:relative; padding-bottom:18px; }
+  .timeline .event:last-child { padding-bottom:0; }
+  .timeline .event::before { content:""; position:absolute; left:9px; top:24px; width:2px; bottom:-4px; background:var(--gray-200); }
+  .timeline .event:last-child::before { display:none; }
+  .timeline .event .dot { width:20px; height:20px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; z-index:1; }
+  .timeline .event .dot svg { width:11px; height:11px; }
+  .timeline .event .dot.success { background:var(--success); color:#fff; }
+  .timeline .event .dot.warn { background:var(--status-warning); color:#fff; }
+  .timeline .event .dot.info { background:var(--brand-blue); color:#fff; }
+  .timeline .event .dot.err { background:var(--status-error); color:#fff; }
+  .timeline .event .body { flex:1; padding-top:1px; }
+  .timeline .event .l1 { font-size:13px; font-weight:500; color:var(--dark); }
+  .timeline .event .l2 { font-size:12px; color:var(--gray-500); margin-top:2px; }
+  .timeline .event .ts { font-family:var(--font-mono); font-size:11px; color:var(--gray-400); margin-top:3px; }
+
+  /* Restrictions banner */
+  .lockout { background:rgba(243,156,18,.06); border:1px solid rgba(243,156,18,.3); border-radius:10px; padding:14px 16px; display:flex; align-items:flex-start; gap:12px; margin-bottom:18px; }
+  .lockout .ic { color:var(--status-warning); flex-shrink:0; margin-top:1px; }
+  .lockout .ic svg { width:18px; height:18px; }
+  .lockout .ttl { font-size:13px; font-weight:600; color:var(--dark); }
+  .lockout .desc { font-size:12px; color:var(--gray-700); margin-top:3px; line-height:1.5; }
+  .lockout .desc strong { color:var(--status-warning); font-weight:700; }
+
+  /* Approved benefits */
+  .benefit-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:14px; }
+  .benefit { background:#fff; border:1px solid var(--gray-200); border-radius:10px; padding:14px; }
+  .benefit .ic { width:30px; height:30px; border-radius:7px; background:rgba(0,184,148,.1); color:var(--success); display:flex; align-items:center; justify-content:center; margin-bottom:8px; }
+  .benefit .ic svg { width:15px; height:15px; }
+  .benefit .ttl { font-size:13px; font-weight:600; }
+  .benefit .desc { font-size:11px; color:var(--gray-500); margin-top:2px; line-height:1.4; }
+
+  /* PACT Act preset chips */
+  .preset-chips { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .preset-chip { padding:5px 10px; background:var(--gray-100); border-radius:9999px; font-size:11px; font-weight:500; color:var(--gray-700); display:inline-flex; align-items:center; gap:4px; }
+  .preset-chip svg { width:11px; height:11px; }
+  .preset-chip.ok { background:rgba(0,184,148,.12); color:var(--success); }
+
+  /* Side rail (compliance summary on approved state) */
+  .approved-grid { display:grid; grid-template-columns:1fr 280px; gap:18px; align-items:start; }
+  @media (max-width:760px) { .approved-grid { grid-template-columns:1fr; } }
+  .side-card { background:#fff; border:1px solid var(--gray-200); border-radius:12px; padding:18px 20px; }
+  .side-card h4 { margin:0 0 10px; font-size:13px; font-weight:600; }
+  .side-card .doc-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--gray-100); font-size:12px; }
+  .side-card .doc-row:last-child { border-bottom:0; }
+  .side-card .doc-row .name { color:var(--dark); }
+  .side-card .doc-row .exp { font-family:var(--font-mono); font-size:11px; color:var(--gray-500); }
+  .side-card .doc-row .exp.warn { color:var(--status-warning); }
+
+  .review-status { display:inline-flex; align-items:center; gap:5px; padding:3px 8px; border-radius:9999px; font-size:11px; font-weight:600; }
+  .review-status.pending { background:rgba(243,156,18,.12); color:var(--status-warning); }
+  .review-status.approved { background:rgba(0,184,148,.12); color:var(--success); }
+  .review-status.rejected { background:rgba(231,76,60,.1); color:var(--status-error); }
+  .review-status .pulse { width:6px; height:6px; border-radius:50%; }
+  .review-status.pending .pulse { background:var(--status-warning); animation:pulse 1.5s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% {opacity:1} 50% {opacity:.5} }
+</style>
+</head>
+<body>
+<div class="shell">
+
+<header style="margin-bottom:32px">
+  <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--gray-500);margin-bottom:6px">Retailer · Settings</div>
+  <h1 style="margin:0;font-size:28px;font-weight:700;letter-spacing:-0.01em">Buyer verification</h1>
+  <div style="margin-top:6px;font-size:14px;color:var(--gray-500);max-width:680px;line-height:1.5">
+    Tobacco retailers must complete KYB + license verification before placing orders. 5 states cover the lifecycle from empty → submission → review → approval / rejection.
+  </div>
+</header>
+
+<div class="states">
+
+  <!-- =================================================================== -->
+  <!-- STATE 1 — Not started (empty / call to action) -->
+  <!-- =================================================================== -->
+  <section data-screen-label="01 Not started">
+    <div class="state-label">
+      <span class="num">01</span>
+      <span class="ttl">Not started · Empty + checkout lockout</span>
+      <span class="meta">/settings/verification — first visit, regulatory blocker visible</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head">
+        <span class="tl"></span><span class="tl"></span><span class="tl"></span>
+        <span class="crumb">Settings / <span class="here">Verification</span></span>
+      </div>
+      <div class="frame-body">
+        <div class="ph">
+          <h1>Verify your business</h1>
+          <div class="sub">Federal law requires tobacco retailers to verify their license before purchasing wholesale. Most retailers are approved within <strong style="color:var(--dark)">2 business days</strong>.</div>
+        </div>
+
+        <div class="container">
+
+          <div class="lockout">
+            <span class="ic"><i data-lucide="lock"></i></span>
+            <div>
+              <div class="ttl">Checkout disabled until verified</div>
+              <div class="desc">You can browse the marketplace and add to cart, but you <strong>cannot place tobacco orders</strong> until your business is approved. Other categories (glass, accessories) work without verification.</div>
+            </div>
+          </div>
+
+          <div class="status-hero">
+            <div class="ic start"><i data-lucide="shield-check"></i></div>
+            <div class="body">
+              <h2>Get verified in 4 steps</h2>
+              <div class="desc">We need three documents: your <strong>resale certificate</strong>, your <strong>EIN confirmation</strong>, and your <strong>state tobacco license</strong>. All uploads are encrypted and only seen by our compliance team.</div>
+              <div class="preset-chips" style="margin-top:12px">
+                <span class="preset-chip"><i data-lucide="lock"></i>SOC 2 encrypted</span>
+                <span class="preset-chip"><i data-lucide="clock"></i>~10 min to complete</span>
+                <span class="preset-chip"><i data-lucide="shield"></i>PACT Act compliant</span>
+              </div>
+            </div>
+            <div><button class="btn btn-primary"><i data-lucide="arrow-right" style="width:14px;height:14px"></i>Start verification</button></div>
+          </div>
+
+          <div class="checklist">
+            <div class="hd">
+              <h3>Verification checklist</h3>
+              <div class="progress">
+                <div class="pbar"><div class="fill" style="width:0%"></div></div>
+                <span><strong style="color:var(--dark)">0</strong>/4 complete</span>
+              </div>
+            </div>
+
+            <div class="step-row">
+              <div class="check todo">1</div>
+              <div class="body">
+                <div class="ttl">Business details</div>
+                <div class="desc">Legal name, DBA, business address, EIN. Must match your tax filings.</div>
+              </div>
+              <div class="actions"><button class="btn btn-secondary btn-sm">Begin</button></div>
+            </div>
+            <div class="step-row">
+              <div class="check todo">2</div>
+              <div class="body">
+                <div class="ttl">Resale certificate</div>
+                <div class="desc">PDF or image of your state-issued resale / sales tax exemption certificate.</div>
+              </div>
+              <div class="actions"><button class="btn btn-secondary btn-sm" disabled style="opacity:.4;cursor:not-allowed">Begin</button></div>
+            </div>
+            <div class="step-row">
+              <div class="check todo">3</div>
+              <div class="body">
+                <div class="ttl">State tobacco license</div>
+                <div class="desc">Required for vape, e-liquid, and pouch purchases. Some states issue separate cigar licenses.</div>
+              </div>
+              <div class="actions"><button class="btn btn-secondary btn-sm" disabled style="opacity:.4;cursor:not-allowed">Begin</button></div>
+            </div>
+            <div class="step-row">
+              <div class="check todo">4</div>
+              <div class="body">
+                <div class="ttl">Identity verification (owner)</div>
+                <div class="desc">Government ID + selfie via our secure provider. Required for KYC under PACT Act.</div>
+              </div>
+              <div class="actions"><button class="btn btn-secondary btn-sm" disabled style="opacity:.4;cursor:not-allowed">Begin</button></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================================================================== -->
+  <!-- STATE 2 — In progress (mid-form, file uploading) -->
+  <!-- =================================================================== -->
+  <section data-screen-label="02 In progress">
+    <div class="state-label">
+      <span class="num">02</span>
+      <span class="ttl">In progress · Step 2 of 4 with active upload</span>
+      <span class="meta">Step 1 done · Step 2 form filled · file uploading 64% · validation error caught</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head">
+        <span class="tl"></span><span class="tl"></span><span class="tl"></span>
+        <span class="crumb">Settings / <span class="here">Verification</span></span>
+      </div>
+      <div class="frame-body">
+        <div class="ph">
+          <h1>Verify your business</h1>
+          <div class="sub">2 of 4 steps complete. Don't worry if you need to pause — we save your progress automatically.</div>
+        </div>
+
+        <div class="container">
+
+          <div class="checklist">
+            <div class="hd">
+              <h3>Verification checklist</h3>
+              <div class="progress">
+                <div class="pbar"><div class="fill" style="width:50%"></div></div>
+                <span><strong style="color:var(--dark)">2</strong>/4 in progress</span>
+              </div>
+            </div>
+
+            <div class="step-row">
+              <div class="check done"><i data-lucide="check" style="width:11px;height:11px"></i></div>
+              <div class="body">
+                <div class="ttl">Business details <span class="badge badge-success">VERIFIED</span></div>
+                <div class="desc">Elm Street Smoke Shop LLC · EIN 88-1234567 · Cleveland, OH 44113</div>
+                <div class="meta-line">
+                  <span><i data-lucide="check-circle-2" style="width:11px;height:11px;color:var(--success);display:inline-block;vertical-align:middle"></i> EIN confirmed via IRS lookup</span>
+                  <span class="k">Submitted Apr 28</span>
+                </div>
+              </div>
+              <div class="actions"><button class="btn btn-secondary btn-sm" style="background:none;color:var(--brand-teal);border:0">Edit</button></div>
+            </div>
+
+            <div class="step-row" style="background:rgba(30,77,140,.03)">
+              <div class="check current">2</div>
+              <div class="body">
+                <div class="ttl">Resale certificate</div>
+                <div class="desc">PDF or image of your state-issued resale / sales tax exemption certificate.</div>
+
+                <div class="field-grid" style="margin-top:14px">
+                  <div class="field-row">
+                    <label>Issuing state <span class="req">*</span></label>
+                    <select>
+                      <option>Ohio</option>
+                    </select>
+                  </div>
+                  <div class="field-row">
+                    <label>Certificate number <span class="req">*</span></label>
+                    <input class="mono" value="OH-44-1882094-T">
+                  </div>
+                  <div class="field-row err">
+                    <label>Effective date <span class="req">*</span></label>
+                    <input class="mono" value="01/15/2024">
+                  </div>
+                  <div class="field-row err">
+                    <label>Expiration date <span class="req">*</span></label>
+                    <input class="mono" value="04/12/2026" style="color:var(--status-error)">
+                    <span class="err-msg"><i data-lucide="alert-circle"></i>Certificate is expired. Upload a current one.</span>
+                  </div>
+                  <div class="field-row full">
+                    <label>Certificate document <span class="req">*</span></label>
+                    <div class="uploader uploading">
+                      <div class="file-icon"><i data-lucide="file-text"></i></div>
+                      <div class="file-meta">
+                        <div class="file-name">oh-resale-cert-2026.pdf</div>
+                        <div class="file-sub">Uploading · 1.2 MB · 64%</div>
+                        <div class="pbar"><div class="fill" style="width:64%"></div></div>
+                      </div>
+                      <button style="background:none;border:0;color:var(--gray-500);cursor:pointer;padding:6px"><i data-lucide="x" style="width:14px;height:14px"></i></button>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="display:flex;gap:8px;margin-top:14px">
+                  <button class="btn btn-primary btn-sm" disabled style="opacity:.5;cursor:not-allowed">Submit step 2</button>
+                  <button class="btn-text" style="height:32px;padding:0 12px;font-size:13px;color:var(--gray-500);background:none;border:0;cursor:pointer">Save &amp; continue later</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="step-row">
+              <div class="check todo">3</div>
+              <div class="body">
+                <div class="ttl">State tobacco license</div>
+                <div class="desc">Required for vape, e-liquid, and pouch purchases. Some states issue separate cigar licenses.</div>
+              </div>
+              <div class="actions"><button class="btn btn-secondary btn-sm" disabled style="opacity:.4;cursor:not-allowed">Locked</button></div>
+            </div>
+            <div class="step-row">
+              <div class="check todo">4</div>
+              <div class="body">
+                <div class="ttl">Identity verification (owner)</div>
+                <div class="desc">Government ID + selfie via our secure provider. Required for KYC under PACT Act.</div>
+              </div>
+              <div class="actions"><button class="btn btn-secondary btn-sm" disabled style="opacity:.4;cursor:not-allowed">Locked</button></div>
+            </div>
+          </div>
+
+          <div style="margin-top:14px;padding:12px 14px;background:rgba(52,152,219,.06);border:1px solid rgba(52,152,219,.2);border-radius:8px;font-size:12px;color:var(--gray-700);display:flex;align-items:center;gap:8px">
+            <i data-lucide="save" style="width:14px;height:14px;color:var(--status-info)"></i>
+            Auto-saved 18 seconds ago. You can leave and come back any time.
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================================================================== -->
+  <!-- STATE 3 — Submitted, under review (pending) -->
+  <!-- =================================================================== -->
+  <section data-screen-label="03 Pending review">
+    <div class="state-label">
+      <span class="num">03</span>
+      <span class="ttl">Submitted · Under review</span>
+      <span class="meta">All 4 steps submitted · timeline showing review queue position</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head">
+        <span class="tl"></span><span class="tl"></span><span class="tl"></span>
+        <span class="crumb">Settings / <span class="here">Verification</span></span>
+      </div>
+      <div class="frame-body">
+        <div class="ph">
+          <h1>Verify your business</h1>
+          <div class="sub">Submitted on April 29 at 4:12 PM. Hang tight — most reviews complete within 1–2 business days.</div>
+        </div>
+
+        <div class="container">
+
+          <div class="status-hero pending">
+            <div class="ic pending"><i data-lucide="hourglass"></i></div>
+            <div class="body">
+              <h2 style="display:flex;align-items:center;gap:10px">Under review <span class="review-status pending"><span class="pulse"></span>PENDING</span></h2>
+              <div class="desc">Our compliance team is reviewing your submission. We'll email <strong>ravi@elmstreetsmoke.com</strong> the moment a decision is made — typically within <strong>2 business days</strong>.</div>
+              <div class="preset-chips" style="margin-top:12px">
+                <span class="preset-chip ok"><i data-lucide="check"></i>All 4 steps submitted</span>
+                <span class="preset-chip"><i data-lucide="users"></i>Position #3 in queue</span>
+                <span class="preset-chip"><i data-lucide="clock"></i>Est. decision Apr 30</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="lockout">
+            <span class="ic" style="color:var(--brand-blue)"><i data-lucide="info"></i></span>
+            <div>
+              <div class="ttl" style="color:var(--brand-blue)">You can keep shopping</div>
+              <div class="desc">Add tobacco items to your cart while you wait — they'll unlock for checkout the moment you're approved. Non-restricted categories work normally.</div>
+            </div>
+          </div>
+
+          <div class="checklist" style="margin-bottom:18px">
+            <div class="hd">
+              <h3>What you submitted</h3>
+              <div class="progress"><span><strong style="color:var(--dark)">4</strong>/4 complete</span></div>
+            </div>
+            <div class="step-row">
+              <div class="check done"><i data-lucide="check" style="width:11px;height:11px"></i></div>
+              <div class="body">
+                <div class="ttl">Business details</div>
+                <div class="desc">Elm Street Smoke Shop LLC · EIN 88-1234567 · Cleveland, OH 44113</div>
+              </div>
+              <span class="review-status approved"><i data-lucide="check" style="width:10px;height:10px"></i>VERIFIED</span>
+            </div>
+            <div class="step-row">
+              <div class="check done"><i data-lucide="check" style="width:11px;height:11px"></i></div>
+              <div class="body">
+                <div class="ttl">Resale certificate</div>
+                <div class="desc">OH-44-1882094-T · expires 04/12/2028</div>
+                <div class="meta-line"><span class="k">oh-resale-cert-2026.pdf · 1.2 MB</span></div>
+              </div>
+              <span class="review-status pending"><span class="pulse"></span>REVIEWING</span>
+            </div>
+            <div class="step-row">
+              <div class="check done"><i data-lucide="check" style="width:11px;height:11px"></i></div>
+              <div class="body">
+                <div class="ttl">State tobacco license</div>
+                <div class="desc">OH OTP wholesale license #OTP-44-22198 · expires 12/31/2026</div>
+                <div class="meta-line"><span class="k">oh-otp-license.pdf · 0.8 MB</span></div>
+              </div>
+              <span class="review-status pending"><span class="pulse"></span>REVIEWING</span>
+            </div>
+            <div class="step-row">
+              <div class="check done"><i data-lucide="check" style="width:11px;height:11px"></i></div>
+              <div class="body">
+                <div class="ttl">Identity verification (owner)</div>
+                <div class="desc">Ravi Potluru · driver's license · selfie match passed</div>
+              </div>
+              <span class="review-status approved"><i data-lucide="check" style="width:10px;height:10px"></i>VERIFIED</span>
+            </div>
+          </div>
+
+          <div class="timeline">
+            <div class="hd"><h3>Review timeline</h3></div>
+            <div class="events">
+              <div class="event">
+                <div class="dot info"><i data-lucide="upload"></i></div>
+                <div class="body">
+                  <div class="l1">Verification submitted</div>
+                  <div class="l2">All 4 steps complete · sent to compliance queue</div>
+                  <div class="ts">Apr 29, 4:12 PM EDT</div>
+                </div>
+              </div>
+              <div class="event">
+                <div class="dot success"><i data-lucide="check"></i></div>
+                <div class="body">
+                  <div class="l1">Auto-checks passed</div>
+                  <div class="l2">EIN matches IRS · ID/selfie biometric match · resale cert format valid</div>
+                  <div class="ts">Apr 29, 4:14 PM EDT</div>
+                </div>
+              </div>
+              <div class="event">
+                <div class="dot warn" style="background:#fff;border:2px solid var(--status-warning);color:var(--status-warning)"><i data-lucide="user"></i></div>
+                <div class="body">
+                  <div class="l1">Awaiting human review</div>
+                  <div class="l2">State license requires manual cross-check with Ohio Department of Taxation</div>
+                  <div class="ts">In progress · queue position 3</div>
+                </div>
+              </div>
+              <div class="event">
+                <div class="dot" style="background:var(--gray-200);color:var(--gray-400)"><i data-lucide="check"></i></div>
+                <div class="body" style="opacity:.5">
+                  <div class="l1">Decision</div>
+                  <div class="l2">Approve, reject, or request more info</div>
+                  <div class="ts">Estimated Apr 30, by EOD</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================================================================== -->
+  <!-- STATE 4 — Approved -->
+  <!-- =================================================================== -->
+  <section data-screen-label="04 Approved">
+    <div class="state-label">
+      <span class="num">04</span>
+      <span class="ttl">Approved · Cleared to purchase</span>
+      <span class="meta">Side rail with doc expirations · benefits unlocked · re-verify reminder</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head">
+        <span class="tl"></span><span class="tl"></span><span class="tl"></span>
+        <span class="crumb">Settings / <span class="here">Verification</span></span>
+      </div>
+      <div class="frame-body">
+        <div class="ph">
+          <h1>Verify your business</h1>
+          <div class="sub">Approved on April 30. You're cleared to purchase all categories on WholesaleHub.</div>
+        </div>
+
+        <div class="container">
+
+          <div class="status-hero approved">
+            <div class="ic approved"><i data-lucide="shield-check"></i></div>
+            <div class="body">
+              <h2 style="display:flex;align-items:center;gap:10px">Verified <span class="review-status approved"><i data-lucide="check" style="width:10px;height:10px"></i>APPROVED</span></h2>
+              <div class="desc">Approved by <strong>Margaret Chen</strong> on Apr 30, 2026 at 10:48 AM. Your verification is good through your earliest document expiry.</div>
+              <div class="preset-chips" style="margin-top:12px">
+                <span class="preset-chip ok"><i data-lucide="package"></i>Tobacco unlocked</span>
+                <span class="preset-chip ok"><i data-lucide="dollar-sign"></i>Net-30 terms eligible</span>
+                <span class="preset-chip ok"><i data-lucide="zap"></i>Same-day shipping</span>
+              </div>
+            </div>
+            <div><button class="btn btn-primary"><i data-lucide="shopping-cart" style="width:14px;height:14px"></i>Browse marketplace</button></div>
+          </div>
+
+          <div class="approved-grid">
+            <div>
+              <div style="background:#fff;border:1px solid var(--gray-200);border-radius:12px;padding:20px;margin-bottom:14px">
+                <h3 style="margin:0 0 4px;font-size:15px">What you can do now</h3>
+                <p style="margin:0 0 4px;font-size:13px;color:var(--gray-500)">Your approval unlocks the full WholesaleHub experience.</p>
+                <div class="benefit-grid">
+                  <div class="benefit">
+                    <div class="ic"><i data-lucide="check"></i></div>
+                    <div class="ttl">Place tobacco orders</div>
+                    <div class="desc">All disposables, e-liquids, and pouches.</div>
+                  </div>
+                  <div class="benefit">
+                    <div class="ic"><i data-lucide="check"></i></div>
+                    <div class="ttl">Apply for credit terms</div>
+                    <div class="desc">Net-15 / Net-30 with eligible suppliers.</div>
+                  </div>
+                  <div class="benefit">
+                    <div class="ic"><i data-lucide="check"></i></div>
+                    <div class="ttl">Multi-location ordering</div>
+                    <div class="desc">Ship to any of your verified retail locations.</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="timeline">
+                <div class="hd"><h3>Activity log</h3></div>
+                <div class="events">
+                  <div class="event">
+                    <div class="dot success"><i data-lucide="check"></i></div>
+                    <div class="body">
+                      <div class="l1">Approved by compliance</div>
+                      <div class="l2">All documents cross-verified with Ohio DoT · approver: Margaret Chen</div>
+                      <div class="ts">Apr 30, 10:48 AM EDT</div>
+                    </div>
+                  </div>
+                  <div class="event">
+                    <div class="dot info"><i data-lucide="upload"></i></div>
+                    <div class="body">
+                      <div class="l1">Verification submitted</div>
+                      <div class="l2">All 4 steps complete</div>
+                      <div class="ts">Apr 29, 4:12 PM EDT</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <aside>
+              <div class="side-card">
+                <h4>Your documents</h4>
+                <div class="doc-row">
+                  <div>
+                    <div class="name">EIN confirmation</div>
+                    <div class="exp">No expiry</div>
+                  </div>
+                  <button style="background:none;border:0;color:var(--brand-teal);cursor:pointer;padding:4px;font-size:12px"><i data-lucide="download" style="width:13px;height:13px"></i></button>
+                </div>
+                <div class="doc-row">
+                  <div>
+                    <div class="name">Resale certificate</div>
+                    <div class="exp">Expires 04/12/2028</div>
+                  </div>
+                  <button style="background:none;border:0;color:var(--brand-teal);cursor:pointer;padding:4px;font-size:12px"><i data-lucide="download" style="width:13px;height:13px"></i></button>
+                </div>
+                <div class="doc-row">
+                  <div>
+                    <div class="name">OH OTP license</div>
+                    <div class="exp warn">Expires 12/31/2026 — 8 months</div>
+                  </div>
+                  <button style="background:none;border:0;color:var(--brand-teal);cursor:pointer;padding:4px;font-size:12px"><i data-lucide="download" style="width:13px;height:13px"></i></button>
+                </div>
+                <div class="doc-row">
+                  <div>
+                    <div class="name">Owner ID + selfie</div>
+                    <div class="exp">No expiry</div>
+                  </div>
+                  <span style="font-size:11px;color:var(--gray-400)">private</span>
+                </div>
+              </div>
+
+              <div class="side-card" style="margin-top:14px;background:rgba(243,156,18,.04);border-color:rgba(243,156,18,.25)">
+                <h4 style="display:flex;align-items:center;gap:6px"><i data-lucide="bell" style="width:14px;height:14px;color:var(--status-warning)"></i>Re-verify in 8 months</h4>
+                <p style="font-size:12px;color:var(--gray-500);margin:0;line-height:1.5">Your OH tobacco license expires Dec 31. We'll email you 30 days before to upload the renewed doc — no re-review needed.</p>
+              </div>
+            </aside>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================================================================== -->
+  <!-- STATE 5 — Rejected (with actionable reasons + appeal) -->
+  <!-- =================================================================== -->
+  <section data-screen-label="05 Rejected">
+    <div class="state-label">
+      <span class="num">05</span>
+      <span class="ttl">Rejected · Action required</span>
+      <span class="meta">2 issues flagged with specific fixes · resubmit / appeal paths</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head">
+        <span class="tl"></span><span class="tl"></span><span class="tl"></span>
+        <span class="crumb">Settings / <span class="here">Verification</span></span>
+      </div>
+      <div class="frame-body">
+        <div class="ph">
+          <h1>Verify your business</h1>
+          <div class="sub">We weren't able to approve your verification. Address the items below and resubmit — most reviewers fix and approve in &lt;1 business day.</div>
+        </div>
+
+        <div class="container">
+
+          <div class="status-hero rejected">
+            <div class="ic rejected"><i data-lucide="alert-octagon"></i></div>
+            <div class="body">
+              <h2 style="display:flex;align-items:center;gap:10px">Action required <span class="review-status rejected"><i data-lucide="x" style="width:10px;height:10px"></i>NEEDS UPDATES</span></h2>
+              <div class="desc">2 of 4 items need correction. Reviewer: <strong>Margaret Chen</strong> · reviewed Apr 30, 11:02 AM</div>
+              <div class="preset-chips" style="margin-top:12px">
+                <span class="preset-chip" style="background:rgba(0,184,148,.12);color:var(--success)"><i data-lucide="check"></i>2 verified</span>
+                <span class="preset-chip" style="background:rgba(231,76,60,.1);color:var(--status-error)"><i data-lucide="x"></i>2 need fix</span>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+              <button class="btn btn-primary"><i data-lucide="edit-3" style="width:14px;height:14px"></i>Fix &amp; resubmit</button>
+              <button class="btn-text" style="height:auto;padding:6px 10px;font-size:12px;color:var(--gray-500);background:none;border:0;cursor:pointer">Contact compliance</button>
+            </div>
+          </div>
+
+          <div class="checklist" style="margin-bottom:18px">
+            <div class="hd"><h3>Review results</h3></div>
+
+            <div class="step-row">
+              <div class="check done"><i data-lucide="check" style="width:11px;height:11px"></i></div>
+              <div class="body">
+                <div class="ttl">Business details</div>
+                <div class="desc">Elm Street Smoke Shop LLC · EIN matches IRS records.</div>
+              </div>
+              <span class="review-status approved"><i data-lucide="check" style="width:10px;height:10px"></i>VERIFIED</span>
+            </div>
+
+            <div class="step-row" style="background:rgba(231,76,60,.03)">
+              <div class="check err"><i data-lucide="x" style="width:11px;height:11px"></i></div>
+              <div class="body">
+                <div class="ttl" style="color:var(--status-error)">Resale certificate <span class="badge badge-error">REJECTED</span></div>
+                <div class="desc" style="color:var(--dark)">Document is illegible — the bottom-right corner with the seal is cut off in the scan. We need the full page including the official watermark.</div>
+                <div style="margin-top:10px;padding:10px 12px;background:#fff;border:1px solid var(--gray-200);border-radius:8px;font-size:12px;color:var(--gray-700);display:flex;gap:10px;align-items:flex-start">
+                  <i data-lucide="message-square" style="width:14px;height:14px;color:var(--gray-500);flex-shrink:0;margin-top:1px"></i>
+                  <div>
+                    <strong style="color:var(--dark)">Reviewer note:</strong> "Looks like the scanner cropped the page. Please re-scan at a lower DPI or photograph the full document on a flat surface with all four corners visible."
+                  </div>
+                </div>
+                <div style="margin-top:10px;display:flex;gap:8px">
+                  <button class="btn btn-primary btn-sm"><i data-lucide="upload" style="width:13px;height:13px"></i>Re-upload</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="step-row" style="background:rgba(231,76,60,.03)">
+              <div class="check err"><i data-lucide="x" style="width:11px;height:11px"></i></div>
+              <div class="body">
+                <div class="ttl" style="color:var(--status-error)">State tobacco license <span class="badge badge-error">REJECTED</span></div>
+                <div class="desc" style="color:var(--dark)">License number could not be found in the Ohio Department of Taxation public registry. The number you provided (<span class="numeric">OTP-44-22198</span>) doesn't appear active for any business.</div>
+                <div style="margin-top:10px;padding:10px 12px;background:#fff;border:1px solid var(--gray-200);border-radius:8px;font-size:12px;color:var(--gray-700);display:flex;gap:10px;align-items:flex-start">
+                  <i data-lucide="message-square" style="width:14px;height:14px;color:var(--gray-500);flex-shrink:0;margin-top:1px"></i>
+                  <div>
+                    <strong style="color:var(--dark)">Reviewer note:</strong> "Double-check the digits — Ohio OTP licenses are 7 digits, not 5. Or upload a fresh PDF from the state portal that we can match against the registry."
+                  </div>
+                </div>
+                <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+                  <button class="btn btn-primary btn-sm"><i data-lucide="upload" style="width:13px;height:13px"></i>Re-upload &amp; correct number</button>
+                  <button class="btn-text" style="height:32px;padding:0 12px;font-size:13px;color:var(--brand-teal);background:none;border:0;cursor:pointer">I don't have one yet — open guide</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="step-row">
+              <div class="check done"><i data-lucide="check" style="width:11px;height:11px"></i></div>
+              <div class="body">
+                <div class="ttl">Identity verification (owner)</div>
+                <div class="desc">Ravi Potluru · driver's license · selfie match passed.</div>
+              </div>
+              <span class="review-status approved"><i data-lucide="check" style="width:10px;height:10px"></i>VERIFIED</span>
+            </div>
+          </div>
+
+          <div style="padding:14px 16px;background:rgba(52,152,219,.06);border:1px solid rgba(52,152,219,.2);border-radius:10px;display:flex;gap:12px;align-items:flex-start">
+            <i data-lucide="info" style="width:18px;height:18px;color:var(--status-info);flex-shrink:0;margin-top:1px"></i>
+            <div>
+              <div style="font-size:13px;font-weight:600;color:var(--dark)">Disagree with this decision?</div>
+              <div style="font-size:12px;color:var(--gray-700);margin-top:3px;line-height:1.5">If you believe these documents are valid as-submitted, you can <a href="#" style="color:var(--brand-teal);font-weight:500">file an appeal</a> and our compliance lead will personally re-review within 24 hours.</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</div>
+
+<script>
+  if (window.lucide) lucide.createIcons();
+</script>
+</body>
+</html>

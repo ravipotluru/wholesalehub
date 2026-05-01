@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Catalog CSV Import — WholesaleHub</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="stylesheet" href="_kit.css" />
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  body { background:#EFF1F4; }
+  .shell { max-width: 1280px; margin: 0 auto; padding: 32px 24px 64px; }
+  .states { display:flex; flex-direction:column; gap:48px; }
+  .state-label { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .state-label .num { font-family:var(--font-mono); font-size:11px; font-weight:600; background:var(--brand-blue); color:#fff; border-radius:9999px; padding:2px 8px; }
+  .state-label .ttl { font-size:13px; font-weight:600; color:var(--dark); }
+  .state-label .meta { font-size:12px; color:var(--gray-500); }
+
+  .frame { background:#fff; border:1px solid var(--gray-200); border-radius:12px; overflow:hidden; box-shadow:var(--shadow-sm); }
+  .frame-head { height:36px; background:#fff; border-bottom:1px solid var(--gray-200); display:flex; align-items:center; gap:6px; padding:0 14px; }
+  .frame-head .tl { width:10px; height:10px; border-radius:50%; background:#E5E7EB; }
+  .frame-head .crumb { margin-left:14px; font-size:12px; color:var(--gray-500); }
+  .frame-head .crumb .here { color:var(--dark); font-weight:500; }
+  .frame-body { padding:32px 40px 48px; background:#FAFBFD; }
+
+  .ph { max-width:880px; margin:0 auto 28px; }
+  .ph h1 { margin:0; font-size:26px; font-weight:700; letter-spacing:-0.01em; }
+  .ph .sub { margin-top:6px; font-size:14px; color:var(--gray-500); line-height:1.5; }
+
+  /* stepper */
+  .stepper { max-width:880px; margin:0 auto 24px; display:flex; align-items:center; gap:0; padding:14px 18px; background:#fff; border:1px solid var(--gray-200); border-radius:10px; }
+  .step { display:flex; align-items:center; gap:10px; flex:0 0 auto; }
+  .step .n { width:26px; height:26px; border-radius:50%; background:var(--gray-200); color:var(--gray-500); font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; font-family:var(--font-mono); }
+  .step .lbl { font-size:13px; font-weight:500; color:var(--gray-500); }
+  .step.done .n { background:var(--success); color:#fff; }
+  .step.done .lbl { color:var(--dark); }
+  .step.current .n { background:var(--brand-blue); color:#fff; }
+  .step.current .lbl { color:var(--brand-blue); font-weight:600; }
+  .step-link { flex:1; height:2px; background:var(--gray-200); margin:0 12px; min-width:24px; }
+  .step-link.done { background:var(--success); }
+
+  .container { max-width:880px; margin:0 auto; }
+
+  /* Step 1: Upload */
+  .dropzone {
+    border:2px dashed var(--gray-300); border-radius:14px;
+    background:#fff;
+    padding:48px 24px; text-align:center;
+    transition:all var(--dur-base);
+  }
+  .dropzone.active { border-color:var(--brand-blue); background:rgba(30,77,140,.03); }
+  .dz-icon { width:64px; height:64px; border-radius:50%; background:rgba(30,77,140,.08); color:var(--brand-blue); display:flex; align-items:center; justify-content:center; margin:0 auto 14px; }
+  .dz-icon svg { width:28px; height:28px; }
+  .dz-h { font-size:17px; font-weight:600; color:var(--dark); }
+  .dz-sub { font-size:13px; color:var(--gray-500); margin-top:4px; }
+  .dz-or { display:inline-flex; align-items:center; gap:10px; margin:16px 0; color:var(--gray-400); font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; }
+  .dz-or::before, .dz-or::after { content:""; width:40px; height:1px; background:var(--gray-200); }
+
+  .helper-grid { display:grid; grid-template-columns: repeat(2, 1fr); gap:14px; margin-top:24px; }
+  .helper-card { background:#fff; border:1px solid var(--gray-200); border-radius:12px; padding:18px; }
+  .helper-card .hd { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .helper-card .hd .ic { width:32px; height:32px; border-radius:8px; background:rgba(32,163,158,.1); color:var(--brand-teal); display:flex; align-items:center; justify-content:center; }
+  .helper-card .hd .ic svg { width:16px; height:16px; }
+  .helper-card .hd .ttl { font-size:14px; font-weight:600; }
+  .helper-card .desc { font-size:13px; color:var(--gray-500); line-height:1.5; }
+  .helper-card .link { font-size:13px; color:var(--brand-teal); font-weight:500; margin-top:8px; display:inline-flex; align-items:center; gap:4px; }
+  .helper-card .link svg { width:13px; height:13px; }
+
+  .file-pill { display:flex; align-items:center; gap:12px; background:rgba(30,77,140,.04); border:1px solid rgba(30,77,140,.2); border-radius:10px; padding:14px 16px; margin-top:16px; }
+  .file-pill .ic { width:36px; height:36px; border-radius:8px; background:#fff; color:var(--brand-blue); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .file-pill .meta { flex:1; min-width:0; }
+  .file-pill .name { font-size:14px; font-weight:600; }
+  .file-pill .size { font-family:var(--font-mono); font-size:11px; color:var(--gray-500); margin-top:1px; }
+  .file-pill .x { color:var(--gray-500); cursor:pointer; }
+
+  /* Step 2: Mapping table */
+  .map-table { background:#fff; border:1px solid var(--gray-200); border-radius:12px; overflow:hidden; }
+  .map-table .h { display:grid; grid-template-columns: 1fr 30px 1fr 100px; gap:14px; background:var(--gray-50); padding:12px 18px; border-bottom:1px solid var(--gray-200); font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--gray-500); }
+  .map-row { display:grid; grid-template-columns: 1fr 30px 1fr 100px; gap:14px; padding:12px 18px; border-bottom:1px solid var(--gray-100); align-items:center; }
+  .map-row:last-child { border-bottom:0; }
+  .map-row .csv-col { display:flex; align-items:center; gap:8px; font-size:13px; }
+  .map-row .csv-col .src { font-family:var(--font-mono); font-size:12px; background:var(--gray-100); padding:2px 8px; border-radius:4px; color:var(--gray-700); }
+  .map-row .csv-col .sample { color:var(--gray-500); font-size:12px; font-family:var(--font-mono); }
+  .map-row .arrow { color:var(--gray-400); }
+  .map-row .arrow svg { width:14px; height:14px; }
+  .map-row .target {
+    border:1px solid var(--gray-300); border-radius:8px; padding:8px 10px;
+    font-size:13px; background:#fff; display:flex; align-items:center; justify-content:space-between;
+  }
+  .map-row .target.mapped { border-color:rgba(30,77,140,.3); background:rgba(30,77,140,.03); }
+  .map-row .target.unmapped { color:var(--gray-400); border-style:dashed; }
+  .map-row .target.required { border-color:var(--success); background:rgba(0,184,148,.05); }
+  .map-row .target svg { width:14px; height:14px; color:var(--gray-400); }
+  .map-row .badge { font-size:10px; padding:2px 7px; }
+
+  /* Step 3: Preview / errors */
+  .preview-summary { display:grid; grid-template-columns: repeat(4, 1fr); gap:10px; margin-bottom:18px; }
+  .ps { background:#fff; border:1px solid var(--gray-200); border-radius:10px; padding:14px 16px; }
+  .ps .l { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--gray-500); }
+  .ps .v { font-family:var(--font-mono); font-size:22px; font-weight:700; margin-top:3px; }
+  .ps.ok .v { color:var(--success); }
+  .ps.warn .v { color:var(--status-warning); }
+  .ps.err .v { color:var(--status-error); }
+  .ps .sub { font-size:11px; color:var(--gray-500); margin-top:2px; }
+
+  .filter-bar { display:flex; gap:6px; margin-bottom:12px; align-items:center; }
+  .filter-pill { padding:6px 12px; border-radius:9999px; font-size:12px; font-weight:500; background:var(--gray-100); color:var(--gray-700); display:inline-flex; align-items:center; gap:5px; }
+  .filter-pill.active { background:rgba(30,77,140,.1); color:var(--brand-blue); }
+  .filter-pill .ct { font-family:var(--font-mono); font-size:10px; font-weight:700; padding:1px 5px; border-radius:9999px; background:rgba(0,0,0,.08); }
+  .filter-pill.active .ct { background:rgba(30,77,140,.15); }
+  .filter-bar .right { margin-left:auto; font-size:12px; color:var(--gray-500); }
+
+  table.preview { width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--gray-200); border-radius:12px; overflow:hidden; }
+  table.preview th { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--gray-500); text-align:left; padding:10px 12px; background:var(--gray-50); border-bottom:1px solid var(--gray-200); }
+  table.preview td { font-size:13px; padding:12px; border-bottom:1px solid var(--gray-100); vertical-align:top; }
+  table.preview tr:last-child td { border-bottom:0; }
+  table.preview tr.row-err { background:rgba(231,76,60,.04); }
+  table.preview tr.row-warn { background:rgba(243,156,18,.04); }
+  table.preview td .row-num { font-family:var(--font-mono); color:var(--gray-400); font-size:11px; }
+  table.preview td .sku { font-family:var(--font-mono); font-size:12px; color:var(--gray-700); }
+  table.preview td .price { font-family:var(--font-mono); font-weight:600; }
+  table.preview td .err-msg {
+    display:flex; align-items:flex-start; gap:6px;
+    font-size:12px; color:var(--status-error); font-weight:500;
+    margin-top:4px; line-height:1.4;
+  }
+  table.preview td .err-msg svg { width:13px; height:13px; flex-shrink:0; margin-top:1px; }
+  table.preview td .warn-msg { display:flex; align-items:flex-start; gap:6px; font-size:12px; color:var(--status-warning); font-weight:500; margin-top:4px; line-height:1.4; }
+  table.preview td .warn-msg svg { width:13px; height:13px; flex-shrink:0; margin-top:1px; }
+  table.preview td input.fix { width:100%; padding:5px 8px; border:1px solid var(--status-error); border-radius:5px; font-size:12px; font-family:var(--font-mono); background:#fff; color:var(--status-error); }
+
+  /* Step 4: Result report */
+  .result-hero { background:#fff; border:1px solid var(--gray-200); border-radius:14px; padding:36px 28px; text-align:center; margin-bottom:18px; }
+  .result-hero .ic-wrap { width:80px; height:80px; border-radius:50%; background:rgba(0,184,148,.12); color:var(--success); display:flex; align-items:center; justify-content:center; margin:0 auto 18px; }
+  .result-hero .ic-wrap svg { width:36px; height:36px; }
+  .result-hero h2 { font-size:24px; font-weight:700; margin:0; letter-spacing:-0.01em; }
+  .result-hero .sub { font-size:14px; color:var(--gray-500); margin-top:6px; }
+  .result-stats { display:grid; grid-template-columns: repeat(3,1fr); gap:14px; margin-top:24px; max-width:560px; margin-left:auto; margin-right:auto; }
+  .result-stats .s { padding:14px; border:1px solid var(--gray-200); border-radius:10px; background:var(--gray-50); }
+  .result-stats .s .v { font-family:var(--font-mono); font-size:22px; font-weight:700; }
+  .result-stats .s .l { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--gray-500); margin-top:2px; }
+  .result-stats .s.ok .v { color:var(--success); }
+  .result-stats .s.warn .v { color:var(--status-warning); }
+  .result-stats .s.err .v { color:var(--status-error); }
+
+  .result-actions { display:flex; gap:8px; justify-content:center; margin-top:22px; flex-wrap:wrap; }
+
+  .skipped-list { background:#fff; border:1px solid var(--gray-200); border-radius:12px; overflow:hidden; }
+  .skipped-list .hd { padding:14px 18px; border-bottom:1px solid var(--gray-200); font-size:13px; font-weight:600; display:flex; align-items:center; gap:8px; }
+  .skipped-list .hd svg { width:16px; height:16px; color:var(--status-warning); }
+  .skipped-list .it { padding:12px 18px; border-bottom:1px solid var(--gray-100); display:flex; align-items:center; gap:14px; font-size:13px; }
+  .skipped-list .it:last-child { border-bottom:0; }
+  .skipped-list .it .row-n { font-family:var(--font-mono); font-size:11px; color:var(--gray-400); width:42px; }
+  .skipped-list .it .name { flex:1; }
+  .skipped-list .it .reason { font-size:12px; color:var(--status-warning); display:inline-flex; align-items:center; gap:5px; }
+  .skipped-list .it .reason svg { width:13px; height:13px; }
+  .skipped-list .ft { padding:12px 18px; background:var(--gray-50); border-top:1px solid var(--gray-200); display:flex; gap:8px; align-items:center; font-size:13px; color:var(--gray-500); }
+
+  /* footer bar */
+  .wizard-foot { max-width:880px; margin:24px auto 0; padding:14px 18px; background:#fff; border:1px solid var(--gray-200); border-radius:12px; display:flex; align-items:center; justify-content:space-between; box-shadow:var(--shadow-sm); }
+  .wizard-foot .left { font-size:13px; color:var(--gray-500); }
+  .wizard-foot .actions { display:flex; gap:8px; }
+
+  /* upload progress in error state */
+  .upload-card { background:#fff; border:1px solid var(--gray-200); border-radius:14px; padding:24px; }
+  .upload-card.error { border-color:rgba(231,76,60,.3); }
+  .upload-bar { height:8px; background:var(--gray-100); border-radius:9999px; overflow:hidden; margin-top:12px; }
+  .upload-bar .fill { height:100%; background:var(--brand-blue); border-radius:9999px; transition:width var(--dur-base); }
+  .upload-bar .fill.err { background:var(--status-error); }
+  .err-banner-inline { background:rgba(231,76,60,.06); border:1px solid rgba(231,76,60,.25); border-radius:10px; padding:14px 16px; display:flex; align-items:flex-start; gap:12px; margin-top:18px; }
+  .err-banner-inline .ic { color:var(--status-error); flex-shrink:0; margin-top:1px; }
+  .err-banner-inline .ic svg { width:18px; height:18px; }
+  .err-banner-inline .ttl { font-size:13px; font-weight:600; }
+  .err-banner-inline .desc { font-size:12px; color:var(--gray-700); margin-top:3px; line-height:1.5; }
+
+  .progress-bar-importing { display:flex; align-items:center; gap:14px; background:#fff; border:1px solid rgba(30,77,140,.3); border-radius:12px; padding:18px 22px; margin-bottom:20px; }
+  .progress-bar-importing .spinner {
+    width:28px; height:28px; border-radius:50%; border:3px solid var(--gray-200);
+    border-top-color:var(--brand-blue);
+    animation:spin .8s linear infinite;
+    flex-shrink:0;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .progress-bar-importing .meta { flex:1; }
+  .progress-bar-importing .l1 { font-size:14px; font-weight:600; }
+  .progress-bar-importing .l2 { font-family:var(--font-mono); font-size:11px; color:var(--gray-500); margin-top:2px; }
+  .progress-bar-importing .pct { font-family:var(--font-mono); font-size:18px; font-weight:700; color:var(--brand-blue); }
+
+</style>
+</head>
+<body>
+<div class="shell">
+
+<header style="margin-bottom:32px">
+  <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--gray-500);margin-bottom:6px">Wholesaler · Catalog</div>
+  <h1 style="margin:0;font-size:28px;font-weight:700;letter-spacing:-0.01em">Catalog CSV import wizard</h1>
+  <div style="margin-top:6px;font-size:14px;color:var(--gray-500);max-width:680px;line-height:1.5">
+    4-step bulk import for sellers onboarding 100s–1000s of SKUs. Drop → map columns → preview &amp; fix → commit. Five states cover the whole flow plus errors.
+  </div>
+</header>
+
+<div class="states">
+
+  <!-- =================================================================== -->
+  <!-- STATE 1 — Upload (empty / drop zone) -->
+  <!-- =================================================================== -->
+  <section data-screen-label="01 Step 1 · Upload">
+    <div class="state-label">
+      <span class="num">01</span>
+      <span class="ttl">Step 1 · Upload CSV</span>
+      <span class="meta">/products/import — empty drop zone with template helpers</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head">
+        <span class="tl"></span><span class="tl"></span><span class="tl"></span>
+        <span class="crumb">Catalog / <span class="here">Import</span></span>
+      </div>
+      <div class="frame-body">
+        <div class="ph">
+          <h1>Import catalog</h1>
+          <div class="sub">Bulk-upload products from a CSV. We'll preview every row and only commit clean ones.</div>
+        </div>
+
+        <div class="stepper">
+          <div class="step current"><div class="n">1</div><div class="lbl">Upload</div></div>
+          <div class="step-link"></div>
+          <div class="step"><div class="n">2</div><div class="lbl">Map columns</div></div>
+          <div class="step-link"></div>
+          <div class="step"><div class="n">3</div><div class="lbl">Preview &amp; fix</div></div>
+          <div class="step-link"></div>
+          <div class="step"><div class="n">4</div><div class="lbl">Commit</div></div>
+        </div>
+
+        <div class="container">
+          <div class="dropzone">
+            <div class="dz-icon"><i data-lucide="upload-cloud"></i></div>
+            <div class="dz-h">Drop your catalog CSV here</div>
+            <div class="dz-sub">Up to 50,000 rows · UTF-8 · headers in row 1</div>
+            <div class="dz-or"><span>or</span></div>
+            <button class="btn btn-primary"><i data-lucide="folder-open" style="width:14px;height:14px"></i>Browse files</button>
+          </div>
+
+          <div class="helper-grid">
+            <div class="helper-card">
+              <div class="hd">
+                <div class="ic"><i data-lucide="file-down"></i></div>
+                <div class="ttl">Start from a template</div>
+              </div>
+              <div class="desc">Download our CSV template with all 14 fields, sample rows, and required-column markers.</div>
+              <a href="#" class="link">Download wholesalehub-catalog-template.csv <i data-lucide="arrow-right"></i></a>
+            </div>
+            <div class="helper-card">
+              <div class="hd">
+                <div class="ic" style="background:rgba(30,77,140,.08);color:var(--brand-blue)"><i data-lucide="book-open"></i></div>
+                <div class="ttl">Importing from another platform?</div>
+              </div>
+              <div class="desc">We auto-detect column layouts from Shopify, Faire, Joor, Square, and most ERPs. Just drop the export.</div>
+              <a href="#" class="link">View supported sources <i data-lucide="arrow-right"></i></a>
+            </div>
+          </div>
+        </div>
+
+        <div class="wizard-foot">
+          <div class="left">No file selected</div>
+          <div class="actions">
+            <button class="btn btn-secondary">Cancel</button>
+            <button class="btn btn-primary" disabled style="opacity:.5;cursor:not-allowed">Continue<i data-lucide="arrow-right" style="width:14px;height:14px"></i></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================================================================== -->
+  <!-- STATE 2 — Map columns -->
+  <!-- =================================================================== -->
+  <section data-screen-label="02 Step 2 · Map columns">
+    <div class="state-label">
+      <span class="num">02</span>
+      <span class="ttl">Step 2 · Map columns</span>
+      <span class="meta">14 CSV columns auto-mapped to schema · 1 unmapped warned · 1 unknown ignored</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head">
+        <span class="tl"></span><span class="tl"></span><span class="tl"></span>
+        <span class="crumb">Catalog / <span class="here">Import</span></span>
+      </div>
+      <div class="frame-body">
+        <div class="ph">
+          <h1>Map columns</h1>
+          <div class="sub">We auto-matched 12 of 14 columns. Review the mapping and fix anything that's not quite right.</div>
+        </div>
+
+        <div class="stepper">
+          <div class="step done"><div class="n"><i data-lucide="check" style="width:14px;height:14px"></i></div><div class="lbl">Upload</div></div>
+          <div class="step-link done"></div>
+          <div class="step current"><div class="n">2</div><div class="lbl">Map columns</div></div>
+          <div class="step-link"></div>
+          <div class="step"><div class="n">3</div><div class="lbl">Preview &amp; fix</div></div>
+          <div class="step-link"></div>
+          <div class="step"><div class="n">4</div><div class="lbl">Commit</div></div>
+        </div>
+
+        <div class="container">
+          <div class="file-pill">
+            <div class="ic"><i data-lucide="file-spreadsheet"></i></div>
+            <div class="meta">
+              <div class="name">premium-vape-catalog-2026q2.csv</div>
+              <div class="size">428 rows · 14 columns · 142 KB</div>
+            </div>
+            <button class="btn btn-secondary btn-sm" style="background:none;border:0;color:var(--brand-teal);font-weight:500">Replace file</button>
+          </div>
+
+          <div style="height:18px"></div>
+
+          <div class="map-table">
+            <div class="h">
+              <div>CSV column</div>
+              <div></div>
+              <div>WholesaleHub field</div>
+              <div>Status</div>
+            </div>
+
+            <div class="map-row">
+              <div class="csv-col"><span class="src">name</span><span class="sample">"Raz TN9000…"</span></div>
+              <div class="arrow"><i data-lucide="arrow-right"></i></div>
+              <div class="target required">Product name <i data-lucide="chevron-down"></i></div>
+              <div><span class="badge badge-success">REQUIRED</span></div>
+            </div>
+
+            <div class="map-row">
+              <div class="csv-col"><span class="src">sku</span><span class="sample">"RZ-TN9-WMI"</span></div>
+              <div class="arrow"><i data-lucide="arrow-right"></i></div>
+              <div class="target required">SKU <i data-lucide="chevron-down"></i></div>
+              <div><span class="badge badge-success">REQUIRED</span></div>
+            </div>
+
+            <div class="map-row">
+              <div class="csv-col"><span class="src">upc</span><span class="sample">"850001234567"</span></div>
+              <div class="arrow"><i data-lucide="arrow-right"></i></div>
+              <div class="target mapped">UPC / EAN <i data-lucide="chevron-down"></i></div>
+              <div><span class="badge badge-blue">MAPPED</span></div>
+            </div>
+
+            <div class="map-row">
+              <div class="csv-col"><span class="src">brand</span><span class="sample">"Raz"</span></div>
+              <div class="arrow"><i data-lucide="arrow-right"></i></div>
+              <div class="target mapped">Brand <i data-lucide="chevron-down"></i></div>
+              <div><span class="badge badge-blue">MAPPED</span></div>
+            </div>
+
+            <div class="map-row">
+              <div class="csv-col"><span class="src">category</span><span class="sample">"Disposables"</span></div>
+              <div class="arrow"><i data-lucide="arrow-right"></i></div>
+              <div class="target mapped">Category <i data-lucide="chevron-down"></i></div>
+              <div><span class="badge badge-blue">MAPPED</span></div>
+            </div>
+
+            <div class="map-row">
+              <div class="csv-col"><span class="src">wholesale_price</span><span class="sample">"$12.50"</span></div>
+              <div class="arrow"><i data-lucide="arrow-right"></i></div>
+              <div class="target required">Unit price <i data-lucide="chevron-down"></i></div>
+              <div><span class="badge badge-success">REQUIRED</span></div>
+            </div>
+
+            <div class="map-row">
+              <div class="csv-col"><span class="src">case_qty</span><span class="sample">"24"</span></div>
+              <div class="arrow"><i data-lucide="arrow-right"></i></div>
+              <div class="target mapped">Units per case <i data-lucide="chevron-down"></i></div>
+              <div><span class="badge badge-blue">MAPPED</span></div>
+            </div>
+
+            <div class="map-row">
+              <div class="csv-col"><span class="src">moq</span><span class="sample">"6"</span></div>
+              <div class="arrow"><i data-lucide="arrow-right"></i></div>
+              <div class="target mapped">Min order qty <i data-lucide="chevron-down"></i></div>
+              <div><span class="badge badge-blue">MAPPED</span></div>
+            </div>
+
+            <div class="map-row">
+              <div class="csv-col"><span class="src">stock</span><span class="sample">"144"</span></div>
+              <div class="arrow"><i data-lucide="arrow-right"></i></div>
+              <div class="target mapped">Stock on hand <i data-lucide="chevron-down"></i></div>
+              <div><span class="badge badge-blue">MAPPED</span></div>
+            </div>
+
+            <div class="map-row">
+              <div class="csv-col"><span class="src">desc</span><span class="sample">"Disposable vape, 9000 puffs…"</span></div>
+              <div class="arrow"><i data-lucide="arrow-right"></i></div>
+              <div class="target mapped">Description <i data-lucide="chevron-down"></i></div>
+              <div><span class="badge badge-blue">MAPPED</span></div>
+            </div>
+
+            <div class="map-row">
+              <div class="csv-col"><span class="src">img_url</span><span class="sample">"https://cdn…/raz-wmi.jpg"</span></div>
+              <div class="arrow"><i data-lucide="arrow-right"></i></div>
+              <div class="target mapped">Image URL <i data-lucide="chevron-down"></i></div>
+              <div><span class="badge badge-blue">MAPPED</span></div>
+            </div>
+
+            <div class="map-row">
+              <div class="csv-col"><span class="src">age_restricted</span><span class="sample">"yes"</span></div>
+              <div class="arrow"><i data-lucide="arrow-right"></i></div>
+              <div class="target mapped">Age-restricted <i data-lucide="chevron-down"></i></div>
+              <div><span class="badge badge-blue">MAPPED</span></div>
+            </div>
+
+            <div class="map-row">
+              <div class="csv-col"><span class="src">tax_class</span><span class="sample">"TOBACCO"</span></div>
+              <div class="arrow"><i data-lucide="arrow-right"></i></div>
+              <div class="target unmapped">Choose field… <i data-lucide="chevron-down"></i></div>
+              <div><span class="badge badge-warning">UNMAPPED</span></div>
+            </div>
+
+            <div class="map-row">
+              <div class="csv-col"><span class="src">internal_notes</span><span class="sample">"Q2 promo eligible"</span></div>
+              <div class="arrow"><i data-lucide="arrow-right"></i></div>
+              <div class="target" style="color:var(--gray-400)">— Skip column —</div>
+              <div><span class="badge badge-gray">SKIPPED</span></div>
+            </div>
+          </div>
+
+          <div style="margin-top:14px;padding:12px 16px;background:rgba(52,152,219,.08);border:1px solid rgba(52,152,219,.2);border-radius:8px;font-size:13px;color:var(--dark);display:flex;gap:10px;align-items:flex-start">
+            <i data-lucide="info" style="width:16px;height:16px;color:var(--status-info);flex-shrink:0;margin-top:1px"></i>
+            <div>1 column unmapped (<span class="numeric">tax_class</span>). You can map it now or finish the import without it. Skipped columns are never written to your catalog.</div>
+          </div>
+        </div>
+
+        <div class="wizard-foot">
+          <div class="left"><strong style="color:var(--dark)">premium-vape-catalog-2026q2.csv</strong> · 428 rows ready to preview</div>
+          <div class="actions">
+            <button class="btn btn-secondary"><i data-lucide="arrow-left" style="width:14px;height:14px"></i>Back</button>
+            <button class="btn btn-primary">Preview rows<i data-lucide="arrow-right" style="width:14px;height:14px"></i></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================================================================== -->
+  <!-- STATE 3 — Preview & fix (the meat of the wizard) -->
+  <!-- =================================================================== -->
+  <section data-screen-label="03 Step 3 · Preview &amp; fix">
+    <div class="state-label">
+      <span class="num">03</span>
+      <span class="ttl">Step 3 · Preview &amp; fix errors inline</span>
+      <span class="meta">412 valid · 11 warnings · 5 errors · inline fix on duplicate-SKU and bad price</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head">
+        <span class="tl"></span><span class="tl"></span><span class="tl"></span>
+        <span class="crumb">Catalog / <span class="here">Import</span></span>
+      </div>
+      <div class="frame-body">
+        <div class="ph">
+          <h1>Preview &amp; fix</h1>
+          <div class="sub">Fix what you can inline. We'll skip rows that still have errors when you commit — they'll appear in the result report.</div>
+        </div>
+
+        <div class="stepper">
+          <div class="step done"><div class="n"><i data-lucide="check" style="width:14px;height:14px"></i></div><div class="lbl">Upload</div></div>
+          <div class="step-link done"></div>
+          <div class="step done"><div class="n"><i data-lucide="check" style="width:14px;height:14px"></i></div><div class="lbl">Map columns</div></div>
+          <div class="step-link done"></div>
+          <div class="step current"><div class="n">3</div><div class="lbl">Preview &amp; fix</div></div>
+          <div class="step-link"></div>
+          <div class="step"><div class="n">4</div><div class="lbl">Commit</div></div>
+        </div>
+
+        <div class="container">
+          <div class="preview-summary">
+            <div class="ps ok"><div class="l">Valid</div><div class="v">412</div><div class="sub">will be created</div></div>
+            <div class="ps warn"><div class="l">Warnings</div><div class="v">11</div><div class="sub">imports w/ caveats</div></div>
+            <div class="ps err"><div class="l">Errors</div><div class="v">5</div><div class="sub">need fix or will skip</div></div>
+            <div class="ps"><div class="l">Total rows</div><div class="v" style="color:var(--dark)">428</div><div class="sub">in CSV</div></div>
+          </div>
+
+          <div class="filter-bar">
+            <span class="filter-pill">All<span class="ct">428</span></span>
+            <span class="filter-pill active">Errors<span class="ct">5</span></span>
+            <span class="filter-pill">Warnings<span class="ct">11</span></span>
+            <span class="filter-pill">Valid<span class="ct">412</span></span>
+            <span class="right">Showing 5 of 428 · grouped by issue</span>
+          </div>
+
+          <table class="preview">
+            <thead>
+              <tr>
+                <th style="width:36px">#</th>
+                <th style="width:22%">Name</th>
+                <th style="width:14%">SKU</th>
+                <th style="width:12%">Brand</th>
+                <th style="width:14%">Category</th>
+                <th style="width:12%">Price</th>
+                <th style="width:9%">Stock</th>
+                <th style="width:9%">MOQ</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="row-err">
+                <td><span class="row-num">14</span></td>
+                <td>
+                  Raz TN9000 · Watermelon Ice
+                  <div class="err-msg"><i data-lucide="alert-circle"></i>Duplicate SKU — already exists in your catalog</div>
+                </td>
+                <td><span class="sku">RZ-TN9-WMI</span></td>
+                <td>Raz</td>
+                <td>Disposables</td>
+                <td><span class="price">$12.50</span></td>
+                <td>144</td>
+                <td>6</td>
+              </tr>
+              <tr class="row-err">
+                <td><span class="row-num">87</span></td>
+                <td>Lost Mary OS5000 · Blue Razz
+                  <div class="err-msg"><i data-lucide="alert-circle"></i>Price must be a positive number</div>
+                </td>
+                <td><span class="sku">LM-OS5-BR</span></td>
+                <td>Lost Mary</td>
+                <td>Disposables</td>
+                <td><input class="fix" value="-$5.00"></td>
+                <td>96</td>
+                <td>4</td>
+              </tr>
+              <tr class="row-err">
+                <td><span class="row-num">142</span></td>
+                <td>Geek Bar Pulse Sour Apple
+                  <div class="err-msg"><i data-lucide="alert-circle"></i>Required field missing: SKU</div>
+                </td>
+                <td><input class="fix" placeholder="Enter SKU…"></td>
+                <td>Geek Bar</td>
+                <td>Disposables</td>
+                <td><span class="price">$11.00</span></td>
+                <td>72</td>
+                <td>6</td>
+              </tr>
+              <tr class="row-err">
+                <td><span class="row-num">203</span></td>
+                <td>Elf Bar BC5000 · Strawberry Mango
+                  <div class="err-msg"><i data-lucide="alert-circle"></i>Category "Vapes" not in your taxonomy. Choose existing or add new.</div>
+                </td>
+                <td><span class="sku">EB-BC5-SM</span></td>
+                <td>Elf Bar</td>
+                <td><input class="fix" value="Vapes"></td>
+                <td><span class="price">$10.25</span></td>
+                <td>120</td>
+                <td>6</td>
+              </tr>
+              <tr class="row-err">
+                <td><span class="row-num">317</span></td>
+                <td>Funky Republic Ti7000 · Peach Mango
+                  <div class="err-msg"><i data-lucide="alert-circle"></i>Image URL is unreachable (404)</div>
+                </td>
+                <td><span class="sku">FR-TI7-PM</span></td>
+                <td>Funky Republic</td>
+                <td>Disposables</td>
+                <td><span class="price">$13.75</span></td>
+                <td>48</td>
+                <td>6</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div style="margin-top:14px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--gray-500)">
+            <i data-lucide="lightbulb" style="width:14px;height:14px;color:var(--status-warning)"></i>
+            Tip: fix errors here to maximize your import. Anything still red when you commit will be reported and skipped.
+          </div>
+        </div>
+
+        <div class="wizard-foot">
+          <div class="left"><strong style="color:var(--success)">412 valid</strong> · <strong style="color:var(--status-warning)">11 warnings</strong> · <strong style="color:var(--status-error)">5 errors</strong></div>
+          <div class="actions">
+            <button class="btn btn-secondary"><i data-lucide="arrow-left" style="width:14px;height:14px"></i>Back to mapping</button>
+            <button class="btn btn-primary">Commit 412 valid<i data-lucide="check" style="width:14px;height:14px"></i></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================================================================== -->
+  <!-- STATE 4 — Importing / progress (in-flight) -->
+  <!-- =================================================================== -->
+  <section data-screen-label="04 Importing">
+    <div class="state-label">
+      <span class="num">04</span>
+      <span class="ttl">Importing · In-flight progress</span>
+      <span class="meta">Long-running batch · cancel-safe · navigates away OK (resumes via job id)</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head">
+        <span class="tl"></span><span class="tl"></span><span class="tl"></span>
+        <span class="crumb">Catalog / <span class="here">Import</span></span>
+      </div>
+      <div class="frame-body">
+        <div class="ph">
+          <h1>Importing your catalog</h1>
+          <div class="sub">Hang tight — this typically takes about 1 minute per 1,000 rows. You can navigate away and we'll keep going.</div>
+        </div>
+
+        <div class="container">
+          <div class="progress-bar-importing">
+            <div class="spinner"></div>
+            <div class="meta">
+              <div class="l1">Creating products · 287 of 412 done</div>
+              <div class="l2">Writing image URLs · validating UPCs · Job ID #imp_4f8a3b</div>
+            </div>
+            <div class="pct">69%</div>
+          </div>
+
+          <div style="background:#fff;border:1px solid var(--gray-200);border-radius:12px;overflow:hidden">
+            <div style="padding:14px 18px;border-bottom:1px solid var(--gray-200);font-size:13px;font-weight:600">Activity</div>
+            <div style="padding:6px 0">
+              <div style="padding:10px 18px;display:flex;align-items:center;gap:10px;font-size:13px">
+                <i data-lucide="check-circle-2" style="width:16px;height:16px;color:var(--success)"></i>
+                <span style="flex:1">Validating row schema</span>
+                <span class="numeric" style="font-size:11px;color:var(--gray-500)">12s</span>
+              </div>
+              <div style="padding:10px 18px;display:flex;align-items:center;gap:10px;font-size:13px">
+                <i data-lucide="check-circle-2" style="width:16px;height:16px;color:var(--success)"></i>
+                <span style="flex:1">Resolving categories &amp; brands</span>
+                <span class="numeric" style="font-size:11px;color:var(--gray-500)">4s</span>
+              </div>
+              <div style="padding:10px 18px;display:flex;align-items:center;gap:10px;font-size:13px;background:rgba(30,77,140,.04)">
+                <div style="width:16px;height:16px;border-radius:50%;border:2px solid var(--gray-200);border-top-color:var(--brand-blue);animation:spin .8s linear infinite"></div>
+                <span style="flex:1;font-weight:500;color:var(--dark)">Creating products &amp; price tiers</span>
+                <span class="numeric" style="font-size:11px;color:var(--brand-blue)">in progress</span>
+              </div>
+              <div style="padding:10px 18px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--gray-400)">
+                <div style="width:16px;height:16px;border-radius:50%;border:2px solid var(--gray-200)"></div>
+                <span style="flex:1">Generating embeddings for search</span>
+                <span class="numeric" style="font-size:11px">queued</span>
+              </div>
+              <div style="padding:10px 18px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--gray-400)">
+                <div style="width:16px;height:16px;border-radius:50%;border:2px solid var(--gray-200)"></div>
+                <span style="flex:1">Indexing for autocomplete</span>
+                <span class="numeric" style="font-size:11px">queued</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="wizard-foot">
+          <div class="left">Job #imp_4f8a3b · started 47s ago · est. 22s remaining</div>
+          <div class="actions">
+            <button class="btn btn-secondary">Continue in background</button>
+            <button class="btn-text" style="height:40px;padding:0 14px;font-size:13px;color:var(--status-error);background:none;border:0;cursor:pointer;font-weight:500">Cancel import</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================================================================== -->
+  <!-- STATE 5 — Result report (success + 5 skipped + actions) -->
+  <!-- =================================================================== -->
+  <section data-screen-label="05 Result report">
+    <div class="state-label">
+      <span class="num">05</span>
+      <span class="ttl">Step 4 · Result report</span>
+      <span class="meta">412 imported, 5 skipped (downloadable error report) · go-live actions</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head">
+        <span class="tl"></span><span class="tl"></span><span class="tl"></span>
+        <span class="crumb">Catalog / Import / <span class="here">Done</span></span>
+      </div>
+      <div class="frame-body">
+        <div class="stepper">
+          <div class="step done"><div class="n"><i data-lucide="check" style="width:14px;height:14px"></i></div><div class="lbl">Upload</div></div>
+          <div class="step-link done"></div>
+          <div class="step done"><div class="n"><i data-lucide="check" style="width:14px;height:14px"></i></div><div class="lbl">Map columns</div></div>
+          <div class="step-link done"></div>
+          <div class="step done"><div class="n"><i data-lucide="check" style="width:14px;height:14px"></i></div><div class="lbl">Preview &amp; fix</div></div>
+          <div class="step-link done"></div>
+          <div class="step done"><div class="n"><i data-lucide="check" style="width:14px;height:14px"></i></div><div class="lbl">Done</div></div>
+        </div>
+
+        <div class="container">
+          <div class="result-hero">
+            <div class="ic-wrap"><i data-lucide="check"></i></div>
+            <h2>Import complete</h2>
+            <div class="sub">412 of 417 products are live in your catalog. 5 rows were skipped — see below.</div>
+
+            <div class="result-stats">
+              <div class="s ok"><div class="v">412</div><div class="l">Created</div></div>
+              <div class="s warn"><div class="v">11</div><div class="l">With warnings</div></div>
+              <div class="s err"><div class="v">5</div><div class="l">Skipped</div></div>
+            </div>
+
+            <div class="result-actions">
+              <button class="btn btn-primary"><i data-lucide="external-link" style="width:14px;height:14px"></i>View 412 new products</button>
+              <button class="btn btn-secondary"><i data-lucide="upload-cloud" style="width:14px;height:14px"></i>Import another file</button>
+              <button class="btn btn-secondary" style="background:none;color:var(--brand-teal);border:0"><i data-lucide="download" style="width:14px;height:14px"></i>Download import receipt</button>
+            </div>
+          </div>
+
+          <div class="skipped-list">
+            <div class="hd">
+              <i data-lucide="alert-triangle"></i>
+              5 rows skipped
+              <span style="margin-left:auto;font-size:12px;color:var(--brand-teal);font-weight:500;cursor:pointer">Download error CSV</span>
+            </div>
+            <div class="it">
+              <span class="row-n">Row 14</span>
+              <span class="name">Raz TN9000 · Watermelon Ice</span>
+              <span class="reason"><i data-lucide="copy"></i>Duplicate SKU</span>
+            </div>
+            <div class="it">
+              <span class="row-n">Row 87</span>
+              <span class="name">Lost Mary OS5000 · Blue Razz</span>
+              <span class="reason"><i data-lucide="dollar-sign"></i>Invalid price</span>
+            </div>
+            <div class="it">
+              <span class="row-n">Row 142</span>
+              <span class="name">Geek Bar Pulse Sour Apple</span>
+              <span class="reason"><i data-lucide="x-circle"></i>Missing SKU</span>
+            </div>
+            <div class="it">
+              <span class="row-n">Row 203</span>
+              <span class="name">Elf Bar BC5000 · Strawberry Mango</span>
+              <span class="reason"><i data-lucide="folder-x"></i>Unknown category</span>
+            </div>
+            <div class="it">
+              <span class="row-n">Row 317</span>
+              <span class="name">Funky Republic Ti7000 · Peach Mango</span>
+              <span class="reason"><i data-lucide="image-off"></i>Image 404</span>
+            </div>
+            <div class="ft">
+              <i data-lucide="lightbulb" style="width:14px;height:14px;color:var(--status-warning)"></i>
+              Fix these in your CSV and re-upload — we'll only import the missing rows.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</div>
+
+<script>
+  if (window.lucide) lucide.createIcons();
+</script>
+</body>
+</html>

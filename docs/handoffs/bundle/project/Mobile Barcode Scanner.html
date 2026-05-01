@@ -1,0 +1,929 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Mobile Barcode Scanner — WholesaleHub</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="stylesheet" href="_kit.css" />
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  body { background:#EFF1F4; }
+  .shell { max-width: 1280px; margin: 0 auto; padding: 32px 24px 64px; }
+
+  .states { display:flex; flex-direction:column; gap:48px; }
+  .state-label { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .state-label .num { font-family:var(--font-mono); font-size:11px; font-weight:600; background:var(--brand-blue); color:#fff; border-radius:9999px; padding:2px 8px; letter-spacing:.04em; }
+  .state-label .ttl { font-size:13px; font-weight:600; color:var(--dark); }
+  .state-label .meta { font-size:12px; color:var(--gray-500); }
+
+  .frame { background:#fff; border:1px solid var(--gray-200); border-radius:12px; overflow:hidden; box-shadow:var(--shadow-sm); }
+  .frame-head { height:36px; background:#fff; border-bottom:1px solid var(--gray-200); display:flex; align-items:center; gap:6px; padding:0 14px; }
+  .frame-head .tl { width:10px; height:10px; border-radius:50%; background:#E5E7EB; }
+  .frame-head .crumb { margin-left:14px; font-size:12px; color:var(--gray-500); }
+  .frame-head .crumb .here { color:var(--dark); font-weight:500; }
+  .frame-body { padding:32px 24px 40px; background:#EFF1F4; display:flex; justify-content:center; }
+
+  /* ============ PHONE FRAME ============ */
+  .phone {
+    width:375px; height:760px;
+    background:#000;
+    border:1px solid #1a1a1a;
+    border-radius:36px;
+    overflow:hidden;
+    position:relative;
+    box-shadow: 0 20px 50px -10px rgba(0,0,0,.25), inset 0 0 0 8px #0a0a0a;
+  }
+  .phone .notch {
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    width:120px; height:24px; background:#000; border-radius:0 0 16px 16px;
+    z-index:50;
+  }
+  .phone .screen {
+    position:absolute; inset:0; border-radius:28px; overflow:hidden;
+    background:var(--bg-page);
+    display:flex; flex-direction:column;
+  }
+
+  /* status bar */
+  .ph-status {
+    height:40px; padding:0 24px; display:flex; align-items:center; justify-content:space-between;
+    font-size:13px; font-weight:600; color:var(--dark); font-family:var(--font-mono);
+    background:transparent; flex-shrink:0; padding-top:6px;
+  }
+  .ph-status.dark { color:#fff; }
+  .ph-status .right { display:inline-flex; gap:6px; align-items:center; }
+  .ph-status svg { width:14px; height:14px; }
+
+  /* nav bar */
+  .ph-nav {
+    display:flex; align-items:center; gap:12px;
+    padding:8px 16px 12px;
+    background:#fff;
+    border-bottom:1px solid var(--gray-200);
+    flex-shrink:0;
+  }
+  .ph-nav.dark { background:rgba(0,0,0,.6); border-bottom-color:rgba(255,255,255,.08); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); }
+  .ph-nav .back { width:32px; height:32px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; color:var(--gray-500); }
+  .ph-nav.dark .back { color:#fff; background:rgba(255,255,255,.1); }
+  .ph-nav .title-block { flex:1; min-width:0; }
+  .ph-nav .ttl { font-size:15px; font-weight:600; color:var(--dark); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ph-nav.dark .ttl { color:#fff; }
+  .ph-nav .sub { font-family:var(--font-mono); font-size:11px; color:var(--gray-500); margin-top:1px; }
+  .ph-nav.dark .sub { color:rgba(255,255,255,.7); }
+  .ph-nav .iconbtn { width:32px; height:32px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; color:var(--gray-500); position:relative; }
+  .ph-nav.dark .iconbtn { color:#fff; background:rgba(255,255,255,.1); }
+  .ph-nav .iconbtn svg { width:18px; height:18px; }
+
+  /* main body */
+  .ph-body { flex:1; min-height:0; overflow:hidden; position:relative; }
+
+  /* ============ STATE 1: Permission gate ============ */
+  .perm-gate {
+    height:100%; display:flex; flex-direction:column;
+    background:var(--bg-page); padding:24px 20px;
+  }
+  .perm-art {
+    margin:24px auto 24px;
+    width:140px; height:140px; border-radius:50%;
+    background:rgba(30,77,140,.08);
+    display:flex; align-items:center; justify-content:center;
+    color:var(--brand-blue);
+    position:relative;
+  }
+  .perm-art svg { width:56px; height:56px; }
+  .perm-art::after {
+    content:""; position:absolute; inset:-8px;
+    border:2px dashed rgba(30,77,140,.2);
+    border-radius:50%;
+  }
+  .perm-headline { font-size:20px; font-weight:700; color:var(--dark); text-align:center; letter-spacing:-0.01em; }
+  .perm-explain { font-size:14px; color:var(--gray-500); text-align:center; line-height:1.5; margin-top:8px; padding:0 8px; }
+  .perm-bullets { background:#fff; border:1px solid var(--gray-200); border-radius:12px; padding:16px; margin:20px 0; display:flex; flex-direction:column; gap:12px; }
+  .perm-bullets .b { display:flex; align-items:flex-start; gap:10px; font-size:13px; color:var(--dark); line-height:1.4; }
+  .perm-bullets .b svg { width:16px; height:16px; color:var(--success); flex-shrink:0; margin-top:1px; }
+  .perm-actions { margin-top:auto; display:flex; flex-direction:column; gap:8px; }
+  .perm-actions .btn { width:100%; height:48px; font-size:15px; }
+  .perm-actions .btn-text { color:var(--gray-500); height:44px; background:none; border:0; font-size:13px; font-weight:500; }
+
+  /* ============ STATE 2: Active scanning (camera viewfinder) ============ */
+  .scan-stage {
+    position:absolute; inset:0;
+    background:#000;
+    overflow:hidden;
+  }
+  /* fake camera background — pallets */
+  .scan-stage::before {
+    content:""; position:absolute; inset:0;
+    background:
+      radial-gradient(ellipse at 30% 40%, rgba(255,180,90,.12), transparent 50%),
+      radial-gradient(ellipse at 70% 70%, rgba(60,90,160,.15), transparent 60%),
+      linear-gradient(180deg, #1a1814 0%, #0d0c0a 50%, #14110d 100%);
+  }
+  /* simulated cardboard box edges */
+  .box-shape {
+    position:absolute; left:50%; top:55%; transform:translate(-50%, -50%);
+    width:240px; height:200px;
+    background:linear-gradient(135deg, #6b5a45 0%, #514536 100%);
+    border-radius:6px;
+    box-shadow: 0 30px 50px rgba(0,0,0,.5), inset 0 0 0 1px rgba(0,0,0,.3);
+    transform:translate(-50%, -50%) perspective(400px) rotateX(8deg) rotateY(-5deg);
+  }
+  .box-shape::before {
+    content:""; position:absolute; left:8%; right:8%; top:18%;
+    height:34px; background:#fff; border-radius:2px;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.06);
+  }
+  /* barcode lines */
+  .barcode-lines {
+    position:absolute; left:14%; right:14%; top:24%;
+    height:22px;
+    background:repeating-linear-gradient(90deg,
+      #1a1a1a 0, #1a1a1a 2px, transparent 2px, transparent 4px,
+      #1a1a1a 4px, #1a1a1a 5px, transparent 5px, transparent 8px,
+      #1a1a1a 8px, #1a1a1a 11px, transparent 11px, transparent 13px);
+  }
+  .box-label {
+    position:absolute; left:8%; right:8%; bottom:14%;
+    font-family:var(--font-mono); font-size:9px; color:rgba(0,0,0,.5);
+    font-weight:600; text-align:center; letter-spacing:0.05em;
+  }
+
+  /* viewfinder reticle */
+  .reticle {
+    position:absolute; left:50%; top:50%; transform:translate(-50%, -50%);
+    width:280px; height:180px;
+    z-index:5;
+  }
+  .reticle::before, .reticle::after {
+    content:""; position:absolute; pointer-events:none;
+  }
+  .reticle .corner {
+    position:absolute; width:36px; height:36px;
+    border:3px solid var(--success);
+    border-radius:4px;
+  }
+  .reticle .corner.tl { top:-2px; left:-2px; border-right:0; border-bottom:0; border-top-left-radius:8px; }
+  .reticle .corner.tr { top:-2px; right:-2px; border-left:0; border-bottom:0; border-top-right-radius:8px; }
+  .reticle .corner.bl { bottom:-2px; left:-2px; border-right:0; border-top:0; border-bottom-left-radius:8px; }
+  .reticle .corner.br { bottom:-2px; right:-2px; border-left:0; border-top:0; border-bottom-right-radius:8px; }
+  .scan-line {
+    position:absolute; left:8px; right:8px; top:50%;
+    height:2px;
+    background:linear-gradient(90deg, transparent, var(--success), transparent);
+    box-shadow: 0 0 8px var(--success);
+    animation: scanline 1.6s var(--ease-in-out) infinite;
+  }
+  @keyframes scanline {
+    0%,100% { top:8px; opacity:.6; }
+    50% { top:calc(100% - 8px); opacity:1; }
+  }
+  .reticle-label {
+    position:absolute; left:50%; top:-32px; transform:translateX(-50%);
+    background:rgba(0,184,148,.95); color:#fff;
+    font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:0.06em;
+    padding:4px 10px; border-radius:6px; white-space:nowrap; text-transform:uppercase;
+  }
+
+  /* dim mask outside reticle area */
+  .scan-mask {
+    position:absolute; inset:0;
+    background:radial-gradient(ellipse 220px 150px at 50% 50%, transparent 60%, rgba(0,0,0,.55) 100%);
+    pointer-events:none;
+  }
+
+  /* progress chip top of stage */
+  .scan-progress {
+    position:absolute; top:12px; left:16px; right:16px;
+    background:rgba(0,0,0,.55);
+    backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+    border:1px solid rgba(255,255,255,.1);
+    border-radius:12px;
+    padding:10px 14px;
+    display:flex; align-items:center; gap:12px;
+    z-index:20;
+  }
+  .scan-progress .ring {
+    width:36px; height:36px; border-radius:50%;
+    background:conic-gradient(var(--success) 0deg 230deg, rgba(255,255,255,.15) 230deg 360deg);
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+  }
+  .scan-progress .ring .inner {
+    width:28px; height:28px; border-radius:50%; background:rgba(0,0,0,.7);
+    display:flex; align-items:center; justify-content:center;
+    color:#fff; font-family:var(--font-mono); font-size:10px; font-weight:700;
+  }
+  .scan-progress .meta { flex:1; min-width:0; }
+  .scan-progress .meta .l1 { font-size:13px; font-weight:600; color:#fff; }
+  .scan-progress .meta .l2 { font-family:var(--font-mono); font-size:11px; color:rgba(255,255,255,.7); margin-top:1px; }
+  .scan-progress .torch {
+    width:36px; height:36px; border-radius:8px; flex-shrink:0;
+    background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.15);
+    display:inline-flex; align-items:center; justify-content:center; color:#fff;
+  }
+  .scan-progress .torch.on { background:rgba(255,213,79,.95); color:#000; border-color:transparent; }
+  .scan-progress .torch svg { width:16px; height:16px; }
+
+  /* offline banner */
+  .offline-banner {
+    position:absolute; top:84px; left:16px; right:16px;
+    background:rgba(243,156,18,.95);
+    color:#1a1207;
+    border-radius:8px; padding:8px 12px;
+    font-size:12px; font-weight:600;
+    display:flex; align-items:center; gap:8px;
+    z-index:20;
+    box-shadow: 0 4px 12px rgba(0,0,0,.25);
+  }
+  .offline-banner svg { width:14px; height:14px; flex-shrink:0; }
+  .offline-banner .chip {
+    margin-left:auto; background:rgba(0,0,0,.15); border-radius:9999px;
+    font-family:var(--font-mono); font-size:10px; padding:2px 8px;
+  }
+
+  /* last scan toast — slides in bottom of viewfinder */
+  .last-scan {
+    position:absolute; left:16px; right:16px; bottom:128px;
+    background:rgba(0,0,0,.7);
+    backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+    border:1px solid rgba(255,255,255,.1);
+    border-radius:12px;
+    padding:12px 14px;
+    display:flex; align-items:center; gap:12px;
+    z-index:20;
+    color:#fff;
+    animation:lastScanIn .2s var(--ease-out);
+  }
+  @keyframes lastScanIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:none} }
+  .last-scan .check {
+    width:32px; height:32px; border-radius:50%; background:rgba(0,184,148,.2);
+    display:flex; align-items:center; justify-content:center; color:var(--success); flex-shrink:0;
+  }
+  .last-scan .check svg { width:18px; height:18px; }
+  .last-scan .info { flex:1; min-width:0; }
+  .last-scan .name { font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .last-scan .sku { font-family:var(--font-mono); font-size:10px; color:rgba(255,255,255,.7); margin-top:1px; }
+  .last-scan .qty { font-family:var(--font-mono); font-size:18px; font-weight:700; }
+  .last-scan .qty small { font-family:var(--font-sans); font-size:10px; color:rgba(255,255,255,.6); font-weight:500; display:block; text-align:right; }
+
+  /* bottom dock — actions */
+  .scan-dock {
+    position:absolute; left:0; right:0; bottom:0;
+    padding:14px 16px 28px;
+    background:linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.85) 30%);
+    z-index:20;
+    display:flex; align-items:center; gap:10px;
+  }
+  .scan-dock .pill {
+    flex:1;
+    height:48px; border-radius:14px;
+    background:rgba(255,255,255,.1);
+    border:1px solid rgba(255,255,255,.15);
+    color:#fff;
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    font-size:14px; font-weight:600;
+    backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+  }
+  .scan-dock .pill svg { width:18px; height:18px; }
+  .scan-dock .review {
+    flex:0 0 auto;
+    background:#fff; color:var(--dark);
+    height:48px; padding:0 18px; border-radius:14px;
+    font-size:14px; font-weight:600;
+    display:inline-flex; align-items:center; gap:8px;
+  }
+  .scan-dock .review .badge { font-family:var(--font-mono); font-size:11px; background:var(--brand-blue); color:#fff; padding:2px 7px; border-radius:9999px; }
+
+  /* ============ STATE 3: Discrepancy bottom sheet ============ */
+  .sheet-backdrop {
+    position:absolute; inset:0;
+    background:rgba(0,0,0,.5);
+    z-index:30;
+  }
+  .sheet {
+    position:absolute; left:0; right:0; bottom:0;
+    background:#fff;
+    border-radius:20px 20px 0 0;
+    padding:8px 20px 24px;
+    z-index:31;
+    max-height:78%;
+    display:flex; flex-direction:column;
+    animation:sheetIn .25s var(--ease-out);
+  }
+  @keyframes sheetIn { from{transform:translateY(100%)} to{transform:none} }
+  .sheet .grab { width:36px; height:4px; background:var(--gray-300); border-radius:9999px; margin:8px auto 14px; }
+  .sheet .head {
+    display:flex; align-items:flex-start; gap:12px; margin-bottom:14px;
+    padding-bottom:14px; border-bottom:1px solid var(--gray-100);
+  }
+  .sheet .head .ic {
+    width:40px; height:40px; border-radius:10px;
+    background:rgba(243,156,18,.12); color:var(--status-warning);
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .sheet .head .ic svg { width:20px; height:20px; }
+  .sheet .head .body { flex:1; }
+  .sheet .head .ttl { font-size:16px; font-weight:600; color:var(--dark); }
+  .sheet .head .sku { font-family:var(--font-mono); font-size:11px; color:var(--gray-500); margin-top:2px; }
+  .sheet .head .close { width:32px; height:32px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; color:var(--gray-500); flex-shrink:0; }
+  .sheet .head .close svg { width:18px; height:18px; }
+
+  .qty-row {
+    display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:14px;
+  }
+  .qty-cell { background:var(--gray-50); border:1px solid var(--gray-200); border-radius:10px; padding:10px 12px; }
+  .qty-cell .l { font-size:10px; font-weight:600; color:var(--gray-500); text-transform:uppercase; letter-spacing:0.06em; }
+  .qty-cell .v { font-family:var(--font-mono); font-size:20px; font-weight:700; color:var(--dark); margin-top:2px; }
+  .qty-cell.delta .v { color:var(--status-error); }
+  .qty-cell.delta .v::before { content:"−"; }
+
+  .field-row { margin-bottom:12px; }
+  .field-row .lbl { font-size:12px; font-weight:600; color:var(--dark); margin-bottom:6px; display:block; }
+  .reason-grid { display:grid; grid-template-columns: repeat(2, 1fr); gap:8px; }
+  .reason-pill {
+    border:1px solid var(--gray-300); border-radius:10px; padding:10px 12px;
+    font-size:13px; color:var(--dark);
+    display:flex; align-items:center; gap:8px;
+    background:#fff;
+  }
+  .reason-pill svg { width:14px; height:14px; color:var(--gray-500); flex-shrink:0; }
+  .reason-pill.selected { border-color:var(--brand-blue); background:rgba(30,77,140,.05); color:var(--brand-blue); font-weight:600; }
+  .reason-pill.selected svg { color:var(--brand-blue); }
+
+  .photo-add {
+    border:1.5px dashed var(--gray-300); border-radius:10px; padding:14px;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    color:var(--gray-500); font-size:13px; font-weight:500;
+  }
+  .photo-add svg { width:18px; height:18px; }
+  .photo-thumbs { display:flex; gap:8px; }
+  .thumb { width:64px; height:64px; border-radius:10px; background:linear-gradient(135deg, #b8a890, #8a7a64); position:relative; flex-shrink:0; }
+  .thumb .x { position:absolute; top:-4px; right:-4px; width:20px; height:20px; border-radius:50%; background:var(--dark); color:#fff; display:flex; align-items:center; justify-content:center; }
+  .thumb .x svg { width:11px; height:11px; }
+  .thumb-add { width:64px; height:64px; border-radius:10px; border:1.5px dashed var(--gray-300); display:flex; align-items:center; justify-content:center; color:var(--gray-400); }
+  .thumb-add svg { width:20px; height:20px; }
+
+  .field textarea { width:100%; min-height:64px; resize:none; font-size:13px; font-family:inherit; padding:10px 12px; border:1px solid var(--border-3); border-radius:10px; }
+
+  .sheet-actions { display:flex; gap:8px; margin-top:14px; }
+  .sheet-actions .btn { flex:1; height:46px; font-size:14px; }
+
+  /* ============ STATE 4: Error / camera unavailable ============ */
+  .err-screen {
+    height:100%;
+    background:#0a0a0a;
+    color:#fff;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:24px 28px; text-align:center; position:relative;
+  }
+  .err-screen .ic-wrap {
+    width:96px; height:96px; border-radius:50%;
+    background:rgba(231,76,60,.15);
+    display:flex; align-items:center; justify-content:center;
+    color:var(--status-error);
+    margin-bottom:20px;
+    border:2px solid rgba(231,76,60,.3);
+  }
+  .err-screen .ic-wrap svg { width:42px; height:42px; }
+  .err-screen .ttl { font-size:20px; font-weight:700; letter-spacing:-0.01em; }
+  .err-screen .desc { font-size:14px; color:rgba(255,255,255,.7); line-height:1.5; margin-top:8px; max-width:280px; }
+  .err-screen .code {
+    margin-top:12px; font-family:var(--font-mono); font-size:11px;
+    color:rgba(255,255,255,.5);
+    background:rgba(255,255,255,.05); padding:4px 10px; border-radius:6px;
+    border:1px solid rgba(255,255,255,.08);
+  }
+  .err-screen .actions { margin-top:24px; display:flex; flex-direction:column; gap:8px; width:100%; max-width:280px; }
+  .err-screen .actions .btn { width:100%; height:46px; font-size:14px; }
+  .err-screen .actions .btn-secondary { background:rgba(255,255,255,.08); color:#fff; border:1px solid rgba(255,255,255,.15); }
+  .err-screen .actions .btn-secondary:hover { background:rgba(255,255,255,.14); }
+  .err-screen .help-link {
+    margin-top:14px; font-size:13px; color:var(--brand-teal-light); font-weight:500;
+  }
+
+  /* progress-still-saved indicator at top of error screen */
+  .err-progress {
+    position:absolute; top:8px; left:16px; right:16px;
+    background:rgba(255,255,255,.05);
+    border:1px solid rgba(255,255,255,.1);
+    border-radius:10px; padding:8px 12px;
+    display:flex; align-items:center; gap:10px;
+    font-size:11px;
+  }
+  .err-progress .dot { width:6px; height:6px; border-radius:50%; background:var(--success); }
+  .err-progress .l { color:rgba(255,255,255,.85); }
+  .err-progress .l strong { font-family:var(--font-mono); color:#fff; font-weight:700; }
+
+  /* ============ TABLET / EDGE CASE ============ */
+  .tablet {
+    width:820px; height:600px;
+    background:#000;
+    border:1px solid #1a1a1a;
+    border-radius:24px;
+    overflow:hidden;
+    position:relative;
+    box-shadow: 0 20px 50px -10px rgba(0,0,0,.25), inset 0 0 0 8px #0a0a0a;
+  }
+  .tablet .screen {
+    position:absolute; inset:8px; border-radius:18px; overflow:hidden;
+    background:#0a0a0a;
+    display:grid;
+    grid-template-columns: 1fr 320px;
+  }
+  .tablet .scan-stage { position:relative; }
+  .tablet .scan-stage .reticle { width:380px; height:240px; }
+  .tablet .scan-stage .scan-mask { background:radial-gradient(ellipse 280px 180px at 50% 50%, transparent 55%, rgba(0,0,0,.55) 100%); }
+
+  /* tablet right panel */
+  .tab-panel {
+    background:#fff;
+    display:flex; flex-direction:column;
+    overflow:hidden;
+  }
+  .tab-panel .head {
+    padding:14px 16px; border-bottom:1px solid var(--gray-200);
+    display:flex; align-items:center; gap:10px;
+  }
+  .tab-panel .head .back { width:30px; height:30px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; color:var(--gray-500); }
+  .tab-panel .head .title-block { flex:1; min-width:0; }
+  .tab-panel .head .ttl { font-size:14px; font-weight:600; color:var(--dark); }
+  .tab-panel .head .sub { font-family:var(--font-mono); font-size:11px; color:var(--gray-500); }
+
+  .tab-progress {
+    padding:14px 16px; background:var(--gray-50); border-bottom:1px solid var(--gray-100);
+  }
+  .tab-progress .row { display:flex; align-items:baseline; justify-content:space-between; }
+  .tab-progress .lbl { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--gray-500); }
+  .tab-progress .val { font-family:var(--font-mono); font-size:18px; font-weight:700; color:var(--dark); }
+  .tab-progress .val .of { color:var(--gray-400); font-weight:500; }
+  .tab-progress .bar { height:6px; background:var(--gray-200); border-radius:9999px; overflow:hidden; margin-top:8px; }
+  .tab-progress .bar .fill { height:100%; background:var(--success); border-radius:9999px; }
+
+  .tab-list {
+    flex:1; overflow-y:auto;
+    padding:6px 0;
+  }
+  .tab-list .group {
+    font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.08em;
+    color:var(--gray-500); padding:10px 16px 4px;
+  }
+  .tab-list .it {
+    padding:10px 16px;
+    border-bottom:1px solid var(--gray-100);
+    display:flex; align-items:center; gap:10px;
+  }
+  .tab-list .it .imgph {
+    width:32px; height:32px; border-radius:6px; font-size:13px; flex-shrink:0;
+    background:var(--gray-100); color:var(--gray-500); font-weight:700;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .tab-list .it .meta { flex:1; min-width:0; }
+  .tab-list .it .name { font-size:13px; font-weight:500; color:var(--dark); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tab-list .it .sku { font-family:var(--font-mono); font-size:10px; color:var(--gray-500); }
+  .tab-list .it .q { font-family:var(--font-mono); font-size:13px; font-weight:700; color:var(--dark); }
+  .tab-list .it .q small { font-size:10px; color:var(--gray-400); font-weight:500; }
+  .tab-list .it.flag { background:rgba(243,156,18,.05); }
+  .tab-list .it.flag .name { color:var(--status-warning); }
+  .tab-list .it.recent { background:rgba(0,184,148,.05); }
+
+  .tab-foot {
+    padding:14px 16px;
+    border-top:1px solid var(--gray-200);
+    display:flex; gap:8px;
+  }
+  .tab-foot .btn { flex:1; height:42px; font-size:13px; }
+
+  /* offline banner stays scoped to scan-stage (left grid cell) on tablet */
+  .tablet .offline-banner { left:16px; right:16px; top:12px; }
+
+</style>
+</head>
+<body>
+<div class="shell">
+
+<header style="margin-bottom:32px">
+  <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--gray-500);margin-bottom:6px">Warehouse · Mobile-first</div>
+  <h1 style="margin:0;font-size:28px;font-weight:700;letter-spacing:-0.01em">Mobile barcode scanner</h1>
+  <div style="margin-top:6px;font-size:14px;color:var(--gray-500);max-width:680px;line-height:1.5">
+    Replaces the fake USB-only scanner with a real camera-based PWA flow. Continuous scan with debounce + haptic, inline discrepancy capture, and offline queue. Five states.
+  </div>
+</header>
+
+<div class="states">
+
+  <!-- =================================================================== -->
+  <!-- STATE 1 — Permission gate -->
+  <!-- =================================================================== -->
+  <section data-screen-label="01 Permission gate">
+    <div class="state-label">
+      <span class="num">01</span>
+      <span class="ttl">Permission gate · First scan attempt</span>
+      <span class="meta">/inventory/receive/PO-48211 · before requesting camera</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head">
+        <span class="tl"></span><span class="tl"></span><span class="tl"></span>
+        <span class="crumb">Inventory / Receive / <span class="here">PO-48211</span></span>
+      </div>
+      <div class="frame-body">
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="screen">
+            <div class="ph-status">
+              <span>9:41</span>
+              <span class="right">
+                <i data-lucide="signal"></i><i data-lucide="wifi"></i><i data-lucide="battery-full"></i>
+              </span>
+            </div>
+            <div class="ph-nav">
+              <span class="back"><i data-lucide="chevron-left"></i></span>
+              <div class="title-block">
+                <div class="ttl">Scan items</div>
+                <div class="sub">PO-48211 · Premium Vape Distro</div>
+              </div>
+              <span class="iconbtn"><i data-lucide="more-horizontal"></i></span>
+            </div>
+            <div class="ph-body">
+              <div class="perm-gate">
+                <div class="perm-art">
+                  <i data-lucide="camera"></i>
+                </div>
+                <div class="perm-headline">Allow camera access to scan</div>
+                <div class="perm-explain">We use your camera to read UPC and EAN barcodes. Photos stay on this device unless you flag a discrepancy.</div>
+
+                <div class="perm-bullets">
+                  <div class="b"><i data-lucide="zap"></i><span>Continuous scan — point and shoot, ~3 boxes per second</span></div>
+                  <div class="b"><i data-lucide="wifi-off"></i><span>Works offline — scans queue and sync when you're back online</span></div>
+                  <div class="b"><i data-lucide="shield"></i><span>No video is recorded or uploaded</span></div>
+                </div>
+
+                <div class="perm-actions">
+                  <button class="btn btn-primary"><i data-lucide="camera" style="width:16px;height:16px"></i>Enable camera</button>
+                  <button class="btn-text">Use keypad / USB scanner instead</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================================================================== -->
+  <!-- STATE 2 — Active scanning (populated, just scanned an item) -->
+  <!-- =================================================================== -->
+  <section data-screen-label="02 Active scanning">
+    <div class="state-label">
+      <span class="num">02</span>
+      <span class="ttl">Active scanning · Just captured a successful scan</span>
+      <span class="meta">Reticle live, last-scan toast, progress chip top-left, dock bottom</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head">
+        <span class="tl"></span><span class="tl"></span><span class="tl"></span>
+        <span class="crumb">Inventory / Receive / <span class="here">PO-48211</span></span>
+      </div>
+      <div class="frame-body">
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="screen">
+            <div class="ph-status dark">
+              <span>9:41</span>
+              <span class="right">
+                <i data-lucide="signal"></i><i data-lucide="wifi"></i><i data-lucide="battery-full"></i>
+              </span>
+            </div>
+
+            <div class="scan-stage">
+              <div class="box-shape"><div class="barcode-lines"></div><div class="box-label">RAZ TN9000 · CASE/24</div></div>
+              <div class="scan-mask"></div>
+
+              <!-- top progress chip -->
+              <div class="scan-progress">
+                <div class="ring"><div class="inner">64%</div></div>
+                <div class="meta">
+                  <div class="l1">PO-48211 · Receiving</div>
+                  <div class="l2">128 / 200 units · 14 SKUs</div>
+                </div>
+                <button class="torch" aria-label="Torch"><i data-lucide="zap"></i></button>
+              </div>
+
+              <!-- viewfinder -->
+              <div class="reticle">
+                <span class="reticle-label">Captured · UPC-A</span>
+                <span class="corner tl"></span><span class="corner tr"></span>
+                <span class="corner bl"></span><span class="corner br"></span>
+                <div class="scan-line"></div>
+              </div>
+
+              <!-- last-scan confirmation -->
+              <div class="last-scan">
+                <div class="check"><i data-lucide="check"></i></div>
+                <div class="info">
+                  <div class="name">Raz TN9000 · Watermelon Ice</div>
+                  <div class="sku">SKU RZ-TN9-WMI · 850001234567</div>
+                </div>
+                <div class="qty">
+                  3
+                  <small>of 24</small>
+                </div>
+              </div>
+
+              <!-- bottom dock -->
+              <div class="scan-dock">
+                <button class="pill"><i data-lucide="keyboard"></i>Keypad</button>
+                <button class="review"><i data-lucide="list" style="width:16px;height:16px"></i>Review<span class="badge">14</span></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================================================================== -->
+  <!-- STATE 3 — Discrepancy bottom sheet (edited / capturing variance) -->
+  <!-- =================================================================== -->
+  <section data-screen-label="03 Discrepancy capture">
+    <div class="state-label">
+      <span class="num">03</span>
+      <span class="ttl">Discrepancy capture · Inline bottom sheet</span>
+      <span class="meta">Auto-opens when scanned qty &lt; expected, or on long-press an item</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head">
+        <span class="tl"></span><span class="tl"></span><span class="tl"></span>
+        <span class="crumb">Inventory / Receive / <span class="here">PO-48211</span></span>
+      </div>
+      <div class="frame-body">
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="screen">
+            <div class="ph-status dark">
+              <span>9:41</span>
+              <span class="right">
+                <i data-lucide="signal"></i><i data-lucide="wifi"></i><i data-lucide="battery-full"></i>
+              </span>
+            </div>
+
+            <div class="scan-stage">
+              <div class="box-shape" style="filter:blur(2px) brightness(.6)"><div class="barcode-lines"></div></div>
+              <div class="scan-mask"></div>
+
+              <div class="scan-progress" style="opacity:.85">
+                <div class="ring"><div class="inner">64%</div></div>
+                <div class="meta">
+                  <div class="l1">PO-48211 · Receiving</div>
+                  <div class="l2">128 / 200 units · 14 SKUs</div>
+                </div>
+                <button class="torch"><i data-lucide="zap"></i></button>
+              </div>
+
+              <!-- backdrop + sheet -->
+              <div class="sheet-backdrop"></div>
+              <div class="sheet">
+                <div class="grab"></div>
+                <div class="head">
+                  <div class="ic"><i data-lucide="alert-triangle"></i></div>
+                  <div class="body">
+                    <div class="ttl">Flag discrepancy</div>
+                    <div class="sku">Raz TN9000 · Watermelon Ice · SKU RZ-TN9-WMI</div>
+                  </div>
+                  <span class="close"><i data-lucide="x"></i></span>
+                </div>
+
+                <div class="qty-row">
+                  <div class="qty-cell">
+                    <div class="l">Expected</div>
+                    <div class="v">24</div>
+                  </div>
+                  <div class="qty-cell delta">
+                    <div class="l">Variance</div>
+                    <div class="v">3</div>
+                  </div>
+                </div>
+
+                <div class="field-row">
+                  <span class="lbl">Counted quantity</span>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <button style="width:40px;height:40px;border-radius:10px;border:1px solid var(--gray-300);background:#fff;display:flex;align-items:center;justify-content:center;color:var(--dark)"><i data-lucide="minus" style="width:16px;height:16px"></i></button>
+                    <input value="21" style="flex:1;height:40px;text-align:center;border:1px solid var(--brand-blue);border-radius:10px;font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--brand-blue);background:rgba(30,77,140,.04)">
+                    <button style="width:40px;height:40px;border-radius:10px;border:1px solid var(--gray-300);background:#fff;display:flex;align-items:center;justify-content:center;color:var(--dark)"><i data-lucide="plus" style="width:16px;height:16px"></i></button>
+                  </div>
+                </div>
+
+                <div class="field-row">
+                  <span class="lbl">Reason</span>
+                  <div class="reason-grid">
+                    <button class="reason-pill selected"><i data-lucide="package-minus"></i>Short</button>
+                    <button class="reason-pill"><i data-lucide="package-plus"></i>Over</button>
+                    <button class="reason-pill"><i data-lucide="package-x"></i>Damaged</button>
+                    <button class="reason-pill"><i data-lucide="help-circle"></i>Wrong item</button>
+                  </div>
+                </div>
+
+                <div class="field-row">
+                  <span class="lbl">Photos <span style="color:var(--gray-400);font-weight:400">· optional</span></span>
+                  <div class="photo-thumbs">
+                    <div class="thumb"><span class="x"><i data-lucide="x"></i></span></div>
+                    <div class="thumb-add"><i data-lucide="camera"></i></div>
+                  </div>
+                </div>
+
+                <div class="sheet-actions">
+                  <button class="btn btn-secondary">Cancel</button>
+                  <button class="btn btn-primary"><i data-lucide="flag" style="width:14px;height:14px"></i>Save &amp; continue</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================================================================== -->
+  <!-- STATE 4 — Camera unavailable / scan error -->
+  <!-- =================================================================== -->
+  <section data-screen-label="04 Camera error">
+    <div class="state-label">
+      <span class="num">04</span>
+      <span class="ttl">Error · Camera unavailable / permission denied</span>
+      <span class="meta">Progress preserved · Falls back to keypad / USB · Help link</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head">
+        <span class="tl"></span><span class="tl"></span><span class="tl"></span>
+        <span class="crumb">Inventory / Receive / <span class="here">PO-48211</span></span>
+      </div>
+      <div class="frame-body">
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="screen">
+            <div class="ph-status dark">
+              <span>9:41</span>
+              <span class="right">
+                <i data-lucide="signal"></i><i data-lucide="wifi"></i><i data-lucide="battery-full"></i>
+              </span>
+            </div>
+            <div class="ph-nav dark">
+              <span class="back"><i data-lucide="chevron-left"></i></span>
+              <div class="title-block">
+                <div class="ttl">Scan items</div>
+                <div class="sub">PO-48211 · Premium Vape Distro</div>
+              </div>
+              <span class="iconbtn"><i data-lucide="more-horizontal"></i></span>
+            </div>
+
+            <div class="ph-body">
+              <div class="err-screen">
+                <div class="err-progress">
+                  <span class="dot"></span>
+                  <span class="l">Your progress is saved · <strong>128 / 200 units</strong></span>
+                </div>
+
+                <div class="ic-wrap"><i data-lucide="camera-off"></i></div>
+                <div class="ttl">Camera blocked</div>
+                <div class="desc">We couldn't access this device's camera. Check that WholesaleHub has camera permission in your phone settings.</div>
+                <div class="code">NotAllowedError · gUM denied</div>
+
+                <div class="actions">
+                  <button class="btn btn-primary"><i data-lucide="settings" style="width:16px;height:16px"></i>Open phone settings</button>
+                  <button class="btn btn-secondary"><i data-lucide="rotate-cw" style="width:16px;height:16px"></i>Try camera again</button>
+                  <button class="btn btn-secondary"><i data-lucide="keyboard" style="width:16px;height:16px"></i>Use keypad / USB scanner</button>
+                </div>
+
+                <a href="#" class="help-link">Why does WholesaleHub need camera access?</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================================================================== -->
+  <!-- STATE 5 — Edge case: tablet + offline + queued scans + scrolling list -->
+  <!-- =================================================================== -->
+  <section data-screen-label="05 Edge case · Tablet offline">
+    <div class="state-label">
+      <span class="num">05</span>
+      <span class="ttl">Edge case · Tablet landscape, offline, queued scans</span>
+      <span class="meta">Warehouse iPad on cart · 7 scans queued · long product names truncate</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head">
+        <span class="tl"></span><span class="tl"></span><span class="tl"></span>
+        <span class="crumb">Inventory / Receive / <span class="here">PO-48211</span></span>
+      </div>
+      <div class="frame-body" style="padding:40px 24px">
+        <div class="tablet">
+          <div class="screen">
+            <!-- left: viewfinder -->
+            <div class="scan-stage">
+              <div class="box-shape" style="width:300px;height:240px"><div class="barcode-lines"></div><div class="box-label">RAZ TN9000 · CASE/24</div></div>
+              <div class="scan-mask"></div>
+
+              <!-- offline banner -->
+              <div class="offline-banner">
+                <i data-lucide="wifi-off"></i>
+                <span>You're offline. Scans saved locally.</span>
+                <span class="chip">7 queued</span>
+              </div>
+
+              <div class="reticle">
+                <span class="reticle-label">Aim at barcode</span>
+                <span class="corner tl"></span><span class="corner tr"></span>
+                <span class="corner bl"></span><span class="corner br"></span>
+                <div class="scan-line"></div>
+              </div>
+
+              <div class="scan-dock" style="background:linear-gradient(180deg,transparent 0%, rgba(0,0,0,.7) 60%)">
+                <button class="pill" style="flex:0 0 auto;padding:0 18px"><i data-lucide="keyboard"></i>Keypad</button>
+                <button class="pill" style="flex:0 0 auto;padding:0 18px"><i data-lucide="zap"></i>Torch</button>
+                <div style="flex:1"></div>
+                <button class="pill" style="flex:0 0 auto;padding:0 18px;background:rgba(243,156,18,.9);border-color:transparent;color:#1a1207"><i data-lucide="alert-triangle"></i>Flag discrepancy</button>
+              </div>
+            </div>
+
+            <!-- right: panel -->
+            <div class="tab-panel">
+              <div class="head">
+                <span class="back"><i data-lucide="chevron-left"></i></span>
+                <div class="title-block">
+                  <div class="ttl">Receiving PO-48211</div>
+                  <div class="sub">Premium Vape Distro</div>
+                </div>
+              </div>
+
+              <div class="tab-progress">
+                <div class="row">
+                  <span class="lbl">Progress</span>
+                  <span class="val">128<span class="of"> / 200</span></span>
+                </div>
+                <div class="bar"><div class="fill" style="width:64%"></div></div>
+              </div>
+
+              <div class="tab-list">
+                <div class="group">Just scanned</div>
+                <div class="it recent">
+                  <div class="imgph">R</div>
+                  <div class="meta">
+                    <div class="name">Raz TN9000 · Watermelon Ice (long brand name truncates here)</div>
+                    <div class="sku">RZ-TN9-WMI</div>
+                  </div>
+                  <div class="q">+1<small>of 24</small></div>
+                </div>
+
+                <div class="group">Flagged</div>
+                <div class="it flag">
+                  <div class="imgph" style="background:rgba(243,156,18,.15);color:var(--status-warning)">L</div>
+                  <div class="meta">
+                    <div class="name">Lost Mary OS5000 · Blue Razz</div>
+                    <div class="sku">LM-OS5-BR · short −3</div>
+                  </div>
+                  <div class="q">21<small>of 24</small></div>
+                </div>
+
+                <div class="group">Remaining (12)</div>
+                <div class="it">
+                  <div class="imgph">G</div>
+                  <div class="meta"><div class="name">Geek Bar Pulse · Sour Apple</div><div class="sku">GB-PUL-SA</div></div>
+                  <div class="q">0<small>of 12</small></div>
+                </div>
+                <div class="it">
+                  <div class="imgph">E</div>
+                  <div class="meta"><div class="name">Elf Bar BC5000 · Strawberry Mango</div><div class="sku">EB-BC5-SM</div></div>
+                  <div class="q">0<small>of 36</small></div>
+                </div>
+                <div class="it">
+                  <div class="imgph">F</div>
+                  <div class="meta"><div class="name">Funky Republic Ti7000 · Peach Mango</div><div class="sku">FR-TI7-PM</div></div>
+                  <div class="q">0<small>of 24</small></div>
+                </div>
+                <div class="it">
+                  <div class="imgph">H</div>
+                  <div class="meta"><div class="name">HQD Cuvie Plus · Mint</div><div class="sku">HQ-CV-MNT</div></div>
+                  <div class="q">0<small>of 18</small></div>
+                </div>
+              </div>
+
+              <div class="tab-foot">
+                <button class="btn btn-secondary"><i data-lucide="more-horizontal" style="width:14px;height:14px"></i></button>
+                <button class="btn btn-primary">Review &amp; submit</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</div>
+
+<script>
+  if (window.lucide) lucide.createIcons();
+</script>
+</body>
+</html>

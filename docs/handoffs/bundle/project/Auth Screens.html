@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Auth Screens — WholesaleHub</title>
+<link rel="stylesheet" href="_kit.css" />
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  body { background:#EFF1F4; }
+  .shell { max-width:1280px; margin:0 auto; padding:32px 24px 64px; }
+  .grid { display:grid; grid-template-columns:repeat(2, 1fr); gap:32px; }
+  @media (max-width:1000px) { .grid { grid-template-columns:1fr; } }
+
+  .state-label { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .state-label .num { font-family:var(--font-mono); font-size:11px; font-weight:600; background:var(--brand-blue); color:#fff; border-radius:9999px; padding:2px 8px; }
+  .state-label .ttl { font-size:13px; font-weight:600; color:var(--dark); }
+  .state-label .meta { font-size:12px; color:var(--gray-500); }
+
+  .frame { background:#fff; border:1px solid var(--gray-200); border-radius:12px; overflow:hidden; box-shadow:var(--shadow-sm); }
+  .frame-head { height:36px; background:#fff; border-bottom:1px solid var(--gray-200); display:flex; align-items:center; gap:6px; padding:0 14px; }
+  .frame-head .tl { width:10px; height:10px; border-radius:50%; background:#E5E7EB; }
+  .frame-head .url { margin-left:14px; font-family:var(--font-mono); font-size:11px; color:var(--gray-500); background:var(--gray-50); padding:3px 10px; border-radius:5px; }
+
+  /* Auth canvas */
+  .auth { background:#FAFBFD; min-height:540px; display:grid; grid-template-columns:5fr 4fr; }
+  .auth-left { padding:48px 56px; display:flex; flex-direction:column; justify-content:space-between; }
+  .auth-right { background:linear-gradient(135deg, #1E4D8C 0%, #20A39E 100%); position:relative; overflow:hidden; padding:48px; color:#fff; display:flex; flex-direction:column; justify-content:space-between; }
+  .auth-right::before { content:""; position:absolute; inset:0; background:
+    radial-gradient(circle at 80% 20%, rgba(255,255,255,0.10), transparent 50%),
+    radial-gradient(circle at 20% 90%, rgba(245,127,23,0.20), transparent 50%); pointer-events:none; }
+  .auth-right > * { position:relative; }
+
+  .brand-mark { display:flex; align-items:center; gap:10px; }
+  .brand-mark .sq { width:36px; height:36px; border-radius:8px; background:var(--brand-blue); color:#fff; display:flex; align-items:center; justify-content:center; }
+  .brand-mark .nm { font-weight:700; font-size:17px; letter-spacing:-0.01em; }
+  .brand-mark .nm small { display:block; font-weight:500; font-size:10px; color:var(--gray-500); letter-spacing:0.06em; text-transform:uppercase; margin-top:1px; }
+
+  .auth-form { max-width:380px; width:100%; margin:auto; padding:0; }
+  .auth-form h1 { margin:0 0 6px; font-size:24px; font-weight:700; letter-spacing:-0.01em; }
+  .auth-form .sub { font-size:13px; color:var(--gray-500); line-height:1.5; margin-bottom:24px; }
+
+  .field { display:block; margin-bottom:14px; }
+  .field label { display:block; font-size:12px; font-weight:600; margin-bottom:6px; color:var(--gray-700); }
+  .field input { width:100%; height:42px; padding:0 14px; border:1px solid var(--border-3); border-radius:8px; font-family:inherit; font-size:14px; }
+  .field input:focus { outline:none; border-color:var(--brand-teal); box-shadow:0 0 0 3px rgba(32,163,158,.20); }
+  .field .hint { font-size:11px; color:var(--gray-500); margin-top:5px; }
+  .field input.err { border-color:var(--status-error); }
+  .field input.ok { border-color:var(--success); }
+
+  .pw-meter { display:flex; gap:4px; margin-top:8px; }
+  .pw-meter span { flex:1; height:4px; border-radius:2px; background:var(--gray-200); }
+  .pw-meter span.on { background:var(--success); }
+  .pw-meter span.warn { background:var(--brand-orange); }
+
+  .pw-checks { display:flex; flex-direction:column; gap:4px; margin-top:8px; font-size:11px; color:var(--gray-500); }
+  .pw-checks li { display:flex; align-items:center; gap:6px; list-style:none; }
+  .pw-checks li.met { color:var(--success); }
+  .pw-checks li svg { width:12px; height:12px; }
+
+  .right-content h2 { font-size:24px; font-weight:600; margin:0 0 12px; letter-spacing:-0.01em; line-height:1.25; }
+  .right-content p { font-size:13px; opacity:.9; line-height:1.55; max-width:300px; }
+  .stat-cards { display:flex; gap:14px; margin-top:24px; }
+  .stat-card { flex:1; background:rgba(255,255,255,.10); border:1px solid rgba(255,255,255,.15); padding:14px; border-radius:10px; backdrop-filter:blur(8px); }
+  .stat-card .num { font-family:var(--font-mono); font-size:20px; font-weight:700; }
+  .stat-card .lbl { font-size:11px; opacity:.85; margin-top:2px; }
+
+  .btn-block { width:100%; }
+  .alt-link { text-align:center; font-size:13px; color:var(--gray-500); margin-top:16px; }
+  .alt-link a { color:var(--brand-teal); font-weight:500; }
+
+  /* Code input */
+  .otp { display:flex; gap:8px; justify-content:center; margin:18px 0 8px; }
+  .otp input { width:48px; height:54px; border:1px solid var(--border-3); border-radius:8px; text-align:center; font-family:var(--font-mono); font-size:22px; font-weight:600; }
+  .otp input:focus { outline:none; border-color:var(--brand-teal); box-shadow:0 0 0 3px rgba(32,163,158,.20); }
+  .otp input.filled { border-color:var(--brand-blue); }
+  .otp input.err { border-color:var(--status-error); background:rgba(231,76,60,.04); color:var(--status-error); }
+
+  /* Email illustration */
+  .mail-icon { width:84px; height:84px; border-radius:18px; background:rgba(30,77,140,.08); color:var(--brand-blue); display:flex; align-items:center; justify-content:center; margin:0 auto 18px; position:relative; }
+  .mail-icon svg { width:38px; height:38px; }
+  .mail-icon::after { content:""; position:absolute; inset:-4px; border:2px dashed rgba(30,77,140,.25); border-radius:22px; animation:spin 18s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  .lock-icon { width:84px; height:84px; border-radius:18px; background:rgba(245,127,23,.08); color:var(--brand-orange); display:flex; align-items:center; justify-content:center; margin:0 auto 18px; }
+  .lock-icon svg { width:38px; height:38px; }
+
+  .check-icon { width:84px; height:84px; border-radius:50%; background:rgba(0,184,148,.10); color:var(--success); display:flex; align-items:center; justify-content:center; margin:0 auto 18px; position:relative; }
+  .check-icon svg { width:42px; height:42px; }
+  .check-icon::after { content:""; position:absolute; inset:-6px; border-radius:50%; border:2px solid rgba(0,184,148,.25); }
+
+  .info-row { display:flex; gap:10px; padding:12px 14px; background:rgba(30,77,140,.04); border:1px solid rgba(30,77,140,.15); border-radius:8px; font-size:12px; color:var(--gray-700); margin-bottom:14px; }
+  .info-row .ic { color:var(--brand-blue); flex-shrink:0; margin-top:1px; }
+  .info-row .ic svg { width:14px; height:14px; }
+
+  .err-row { display:flex; gap:10px; padding:10px 12px; background:rgba(231,76,60,.06); border:1px solid rgba(231,76,60,.25); border-radius:8px; font-size:12px; color:var(--status-error); margin-bottom:14px; }
+  .err-row .ic { flex-shrink:0; margin-top:1px; }
+  .err-row .ic svg { width:14px; height:14px; }
+
+  .resend { font-size:12px; color:var(--gray-500); text-align:center; margin-top:8px; }
+  .resend.dis { color:var(--gray-400); }
+  .resend a { color:var(--brand-teal); font-weight:500; }
+
+  .small-foot { font-size:11px; color:var(--gray-400); }
+  .small-foot a { color:var(--gray-500); }
+
+  .quote { display:flex; gap:12px; align-items:flex-start; }
+  .quote .av { width:36px; height:36px; border-radius:50%; background:rgba(255,255,255,.2); display:flex; align-items:center; justify-content:center; font-weight:600; font-size:13px; flex-shrink:0; }
+  .quote .body { font-size:12px; line-height:1.5; opacity:.9; }
+  .quote .body strong { display:block; margin-top:4px; opacity:1; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+<header style="margin-bottom:32px">
+  <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--gray-500);margin-bottom:6px">Authentication</div>
+  <h1 style="margin:0;font-size:28px;font-weight:700;letter-spacing:-0.01em">Auth screens</h1>
+  <div style="margin-top:6px;font-size:14px;color:var(--gray-500);max-width:680px;line-height:1.5">Email verification (initial), email-verified confirmation, request password reset, set new password, and reset success — all on the split-canvas auth shell.</div>
+</header>
+
+<div class="grid">
+
+  <!-- 1. Verify email (waiting for click) -->
+  <div data-screen-label="01 Verify email">
+    <div class="state-label">
+      <span class="num">01</span><span class="ttl">Verify email · waiting</span>
+      <span class="meta">Post-signup, before first login</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head"><span class="tl"></span><span class="tl"></span><span class="tl"></span><span class="url">app.wholesalehub.com/verify-email</span></div>
+      <div class="auth">
+        <div class="auth-left">
+          <div class="brand-mark">
+            <div class="sq"><i data-lucide="package" style="width:18px;height:18px"></i></div>
+            <div class="nm">WholesaleHub<small>B2B platform</small></div>
+          </div>
+          <div class="auth-form" style="text-align:center">
+            <div class="mail-icon"><i data-lucide="mail"></i></div>
+            <h1>Check your email</h1>
+            <div class="sub">We sent a verification link to <strong style="color:var(--dark)">jordan@buckeyesmoke.com</strong>. Click it to activate your account — link expires in 24 hours.</div>
+
+            <div class="info-row" style="text-align:left;margin-top:18px">
+              <span class="ic"><i data-lucide="info"></i></span>
+              <div>Verification is required by Ohio tobacco wholesaler regs. After clicking, you'll upload your resale certificate and tobacco license to start ordering.</div>
+            </div>
+
+            <button class="btn btn-secondary btn-block" style="margin-top:6px"><i data-lucide="external-link" style="width:14px;height:14px"></i>Open Gmail</button>
+
+            <div class="resend dis" style="margin-top:14px">Didn't get it? Resend in <span style="font-family:var(--font-mono);color:var(--dark);font-weight:600">0:42</span></div>
+          </div>
+          <div class="small-foot" style="text-align:center">Wrong email? <a href="#">Sign out & restart</a></div>
+        </div>
+        <div class="auth-right">
+          <div class="brand-mark" style="color:#fff">
+            <div class="sq" style="background:rgba(255,255,255,.18)"><i data-lucide="package" style="width:18px;height:18px"></i></div>
+            <div class="nm" style="color:#fff">WholesaleHub<small style="color:rgba(255,255,255,.7)">B2B platform</small></div>
+          </div>
+          <div class="right-content">
+            <h2>You're 3 steps from your first wholesale order</h2>
+            <p>Verify email · upload license · place order. Most retailers complete onboarding in under 8 minutes.</p>
+            <div class="stat-cards">
+              <div class="stat-card"><div class="num">320+</div><div class="lbl">Verified wholesalers</div></div>
+              <div class="stat-card"><div class="num">8 min</div><div class="lbl">Avg. setup time</div></div>
+              <div class="stat-card"><div class="num">Net-30</div><div class="lbl">Default terms</div></div>
+            </div>
+          </div>
+          <div class="quote">
+            <div class="av">MR</div>
+            <div class="body">"License verified the same day. We placed our first order by 4pm." <strong>Maya R · Cleveland Tobacco Co</strong></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Email verified success -->
+  <div data-screen-label="02 Email verified">
+    <div class="state-label">
+      <span class="num">02</span><span class="ttl">Email verified · continue to license upload</span>
+      <span class="meta">Returning from email click</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head"><span class="tl"></span><span class="tl"></span><span class="tl"></span><span class="url">app.wholesalehub.com/verify-email/confirm?t=…</span></div>
+      <div class="auth">
+        <div class="auth-left">
+          <div class="brand-mark">
+            <div class="sq"><i data-lucide="package" style="width:18px;height:18px"></i></div>
+            <div class="nm">WholesaleHub<small>B2B platform</small></div>
+          </div>
+          <div class="auth-form" style="text-align:center">
+            <div class="check-icon"><i data-lucide="check"></i></div>
+            <h1>Email verified</h1>
+            <div class="sub">Welcome, Jordan. Your account is active. Next step: upload your resale certificate, EIN, and tobacco license to unlock ordering.</div>
+
+            <div style="background:#FAFBFD;border:1px solid var(--gray-200);border-radius:10px;padding:14px;margin:18px 0;text-align:left">
+              <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--gray-500);margin-bottom:10px">Onboarding · 1 of 3</div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;align-items:center;gap:10px;font-size:13px"><span style="width:18px;height:18px;border-radius:50%;background:var(--success);color:#fff;display:flex;align-items:center;justify-content:center"><i data-lucide="check" style="width:11px;height:11px"></i></span><span style="text-decoration:line-through;color:var(--gray-500)">Verify email</span></div>
+                <div style="display:flex;align-items:center;gap:10px;font-size:13px;font-weight:500"><span style="width:18px;height:18px;border-radius:50%;background:var(--brand-blue);color:#fff;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:11px;font-weight:700">2</span>Upload business documents</div>
+                <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--gray-400)"><span style="width:18px;height:18px;border-radius:50%;background:var(--gray-200);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--gray-500)">3</span>Browse catalog & place order</div>
+              </div>
+            </div>
+
+            <button class="btn btn-primary btn-block">Continue to license upload<i data-lucide="arrow-right" style="width:14px;height:14px"></i></button>
+            <a href="#" class="alt-link" style="display:block">Skip for now (limited browsing)</a>
+          </div>
+          <div class="small-foot" style="text-align:center">Account: jordan@buckeyesmoke.com · <a href="#">Switch account</a></div>
+        </div>
+        <div class="auth-right" style="background:linear-gradient(135deg, #20A39E 0%, #00B894 100%)">
+          <div class="brand-mark" style="color:#fff">
+            <div class="sq" style="background:rgba(255,255,255,.18)"><i data-lucide="package" style="width:18px;height:18px"></i></div>
+            <div class="nm" style="color:#fff">WholesaleHub<small style="color:rgba(255,255,255,.7)">B2B platform</small></div>
+          </div>
+          <div class="right-content">
+            <h2>What you'll need for license upload</h2>
+            <ul style="font-size:13px;line-height:1.7;padding-left:0;list-style:none;margin:0">
+              <li style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><i data-lucide="file-text" style="width:16px;height:16px;flex-shrink:0;opacity:.85"></i>Resale certificate (state-issued)</li>
+              <li style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><i data-lucide="hash" style="width:16px;height:16px;flex-shrink:0;opacity:.85"></i>Federal EIN (9 digits)</li>
+              <li style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><i data-lucide="award" style="width:16px;height:16px;flex-shrink:0;opacity:.85"></i>Tobacco/vape license (if applicable)</li>
+              <li style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><i data-lucide="building" style="width:16px;height:16px;flex-shrink:0;opacity:.85"></i>Ship-to address(es)</li>
+            </ul>
+            <p style="margin-top:18px;font-size:12px">Most uploads are reviewed within <strong>4 business hours</strong>. You'll get an email when approved.</p>
+          </div>
+          <div class="quote">
+            <div class="av" style="background:rgba(255,255,255,.25)"><i data-lucide="shield-check" style="width:16px;height:16px"></i></div>
+            <div class="body">All documents are encrypted at rest. We never share license info with other buyers or sellers. <strong>Privacy &amp; security policy →</strong></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Forgot password (email entry) -->
+  <div data-screen-label="03 Forgot password">
+    <div class="state-label">
+      <span class="num">03</span><span class="ttl">Forgot password · email entry</span>
+      <span class="meta">Generic message; doesn't leak account existence</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head"><span class="tl"></span><span class="tl"></span><span class="tl"></span><span class="url">app.wholesalehub.com/reset-password</span></div>
+      <div class="auth">
+        <div class="auth-left">
+          <div class="brand-mark">
+            <div class="sq"><i data-lucide="package" style="width:18px;height:18px"></i></div>
+            <div class="nm">WholesaleHub<small>B2B platform</small></div>
+          </div>
+          <div class="auth-form">
+            <div class="lock-icon"><i data-lucide="lock-keyhole"></i></div>
+            <h1 style="text-align:center">Reset your password</h1>
+            <div class="sub" style="text-align:center">Enter the email tied to your account. If it matches, we'll send a reset link valid for 30 minutes.</div>
+
+            <div class="field">
+              <label>Work email</label>
+              <input value="jordan@buckeyesmoke.com" />
+            </div>
+
+            <button class="btn btn-primary btn-block">Send reset link<i data-lucide="arrow-right" style="width:14px;height:14px"></i></button>
+
+            <div class="alt-link"><a href="#"><i data-lucide="arrow-left" style="width:12px;height:12px;display:inline;vertical-align:-2px"></i> Back to sign in</a></div>
+
+            <div style="margin-top:24px;padding-top:18px;border-top:1px dashed var(--gray-200);font-size:12px;color:var(--gray-500);line-height:1.5;text-align:center">
+              Need help? Contact <a href="#" style="color:var(--brand-teal);font-weight:500">support@wholesalehub.com</a> or call <span style="font-family:var(--font-mono);color:var(--dark)">(216) 555-0182</span>
+            </div>
+          </div>
+          <div class="small-foot" style="text-align:center">© WholesaleHub 2024 · <a href="#">Privacy</a> · <a href="#">Terms</a></div>
+        </div>
+        <div class="auth-right">
+          <div class="brand-mark" style="color:#fff">
+            <div class="sq" style="background:rgba(255,255,255,.18)"><i data-lucide="package" style="width:18px;height:18px"></i></div>
+            <div class="nm" style="color:#fff">WholesaleHub<small style="color:rgba(255,255,255,.7)">B2B platform</small></div>
+          </div>
+          <div class="right-content">
+            <h2>Tip: most password issues come from auto-fill</h2>
+            <p>If your browser saved an old password, the new one won't stick. After resetting, update your password manager so 1Password/LastPass/Apple Keychain remembers the right one.</p>
+            <div style="margin-top:24px;padding:14px;background:rgba(255,255,255,.10);border-radius:10px;border:1px solid rgba(255,255,255,.15);backdrop-filter:blur(8px)">
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.06em;opacity:.8;margin-bottom:8px">Security tips</div>
+              <ul style="font-size:12px;line-height:1.7;padding-left:0;list-style:none;margin:0">
+                <li style="display:flex;gap:8px"><i data-lucide="check" style="width:14px;height:14px;flex-shrink:0;margin-top:2px"></i>Use a unique password for WholesaleHub</li>
+                <li style="display:flex;gap:8px"><i data-lucide="check" style="width:14px;height:14px;flex-shrink:0;margin-top:2px"></i>Enable 2FA in account settings after login</li>
+                <li style="display:flex;gap:8px"><i data-lucide="check" style="width:14px;height:14px;flex-shrink:0;margin-top:2px"></i>Never share login over email or Slack</li>
+              </ul>
+            </div>
+          </div>
+          <div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Set new password -->
+  <div data-screen-label="04 New password">
+    <div class="state-label">
+      <span class="num">04</span><span class="ttl">Set new password · live strength meter</span>
+      <span class="meta">Reset link clicked, token validated</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head"><span class="tl"></span><span class="tl"></span><span class="tl"></span><span class="url">app.wholesalehub.com/reset-password/new?token=…</span></div>
+      <div class="auth">
+        <div class="auth-left">
+          <div class="brand-mark">
+            <div class="sq"><i data-lucide="package" style="width:18px;height:18px"></i></div>
+            <div class="nm">WholesaleHub<small>B2B platform</small></div>
+          </div>
+          <div class="auth-form">
+            <h1>Choose a new password</h1>
+            <div class="sub">For <strong style="color:var(--dark)">jordan@buckeyesmoke.com</strong>. You'll be signed out of all other sessions.</div>
+
+            <div class="field">
+              <label>New password</label>
+              <div style="position:relative">
+                <input type="password" value="••••••••••••" class="ok" />
+                <button style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:0;color:var(--gray-400);cursor:pointer;padding:4px"><i data-lucide="eye" style="width:16px;height:16px"></i></button>
+              </div>
+              <div class="pw-meter">
+                <span class="on"></span><span class="on"></span><span class="on"></span><span class="on" style="background:var(--success)"></span>
+              </div>
+              <ul class="pw-checks">
+                <li class="met"><i data-lucide="check"></i>At least 12 characters</li>
+                <li class="met"><i data-lucide="check"></i>Mixed case</li>
+                <li class="met"><i data-lucide="check"></i>Number or symbol</li>
+                <li class="met"><i data-lucide="check"></i>Not a common password</li>
+              </ul>
+            </div>
+
+            <div class="field">
+              <label>Confirm new password</label>
+              <input type="password" value="••••••••••••" class="ok" />
+              <div class="hint" style="color:var(--success);display:flex;align-items:center;gap:5px"><i data-lucide="check" style="width:12px;height:12px"></i>Passwords match</div>
+            </div>
+
+            <label style="display:flex;align-items:center;gap:9px;font-size:12px;color:var(--gray-700);margin:14px 0 18px;cursor:pointer">
+              <input type="checkbox" checked style="width:14px;height:14px" />Sign me out of all other devices (recommended)
+            </label>
+
+            <button class="btn btn-primary btn-block">Update password & sign in<i data-lucide="arrow-right" style="width:14px;height:14px"></i></button>
+
+            <div class="alt-link" style="font-size:11px;color:var(--gray-400);margin-top:14px">Token expires in <span style="font-family:var(--font-mono);color:var(--gray-700);font-weight:600">28:14</span></div>
+          </div>
+          <div class="small-foot" style="text-align:center">Cleveland, OH · operated by WholesaleHub Inc.</div>
+        </div>
+        <div class="auth-right" style="background:linear-gradient(135deg, #1E4D8C 0%, #2563A8 100%)">
+          <div class="brand-mark" style="color:#fff">
+            <div class="sq" style="background:rgba(255,255,255,.18)"><i data-lucide="package" style="width:18px;height:18px"></i></div>
+            <div class="nm" style="color:#fff">WholesaleHub<small style="color:rgba(255,255,255,.7)">B2B platform</small></div>
+          </div>
+          <div class="right-content">
+            <h2>What "sign out everywhere" does</h2>
+            <p style="margin-bottom:18px">If your password was compromised, this kicks any attacker out of every active session — phone, warehouse tablet, browser, anywhere.</p>
+            <div style="background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.15);padding:16px;border-radius:10px;backdrop-filter:blur(8px)">
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.06em;opacity:.8;margin-bottom:10px">Active sessions · 4</div>
+              <div style="display:flex;flex-direction:column;gap:8px;font-size:12px">
+                <div style="display:flex;justify-content:space-between"><span><i data-lucide="monitor" style="width:13px;height:13px;display:inline;vertical-align:-2px;margin-right:6px"></i>Chrome · Mac</span><span style="opacity:.7;font-family:var(--font-mono)">now</span></div>
+                <div style="display:flex;justify-content:space-between;opacity:.85"><span><i data-lucide="smartphone" style="width:13px;height:13px;display:inline;vertical-align:-2px;margin-right:6px"></i>iPhone scanner</span><span style="opacity:.7;font-family:var(--font-mono)">2h ago</span></div>
+                <div style="display:flex;justify-content:space-between;opacity:.85"><span><i data-lucide="tablet" style="width:13px;height:13px;display:inline;vertical-align:-2px;margin-right:6px"></i>Warehouse iPad</span><span style="opacity:.7;font-family:var(--font-mono)">yesterday</span></div>
+                <div style="display:flex;justify-content:space-between;opacity:.85;color:#FFB199"><span><i data-lucide="alert-triangle" style="width:13px;height:13px;display:inline;vertical-align:-2px;margin-right:6px"></i>Unknown · Lagos</span><span style="font-family:var(--font-mono)">3d ago</span></div>
+              </div>
+            </div>
+          </div>
+          <div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</div>
+<script>if (window.lucide) lucide.createIcons();</script>
+</body>
+</html>

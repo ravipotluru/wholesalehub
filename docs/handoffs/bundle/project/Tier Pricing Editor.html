@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Tier Pricing Editor — WholesaleHub</title>
+<link rel="stylesheet" href="_kit.css" />
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  body { background:#EFF1F4; }
+  .shell { max-width:1280px; margin:0 auto; padding:32px 24px 64px; }
+  .states { display:flex; flex-direction:column; gap:48px; }
+  .state-label { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .state-label .num { font-family:var(--font-mono); font-size:11px; font-weight:600; background:var(--brand-blue); color:#fff; border-radius:9999px; padding:2px 8px; }
+  .state-label .ttl { font-size:13px; font-weight:600; color:var(--dark); }
+  .state-label .meta { font-size:12px; color:var(--gray-500); }
+  .frame { background:#fff; border:1px solid var(--gray-200); border-radius:12px; overflow:hidden; box-shadow:var(--shadow-sm); }
+  .frame-head { height:36px; background:#fff; border-bottom:1px solid var(--gray-200); display:flex; align-items:center; gap:6px; padding:0 14px; }
+  .frame-head .tl { width:10px; height:10px; border-radius:50%; background:#E5E7EB; }
+  .frame-head .crumb { margin-left:14px; font-size:12px; color:var(--gray-500); }
+  .frame-head .crumb .here { color:var(--dark); font-weight:500; }
+  .frame-body { padding:32px 40px 48px; background:#FAFBFD; }
+  .ph { max-width:1000px; margin:0 auto 22px; }
+  .ph h1 { margin:0; font-size:24px; font-weight:700; letter-spacing:-0.01em; }
+  .ph .sub { margin-top:6px; font-size:13px; color:var(--gray-500); line-height:1.5; max-width:680px; }
+  .container { max-width:1000px; margin:0 auto; }
+
+  .product-head { display:flex; gap:18px; align-items:center; padding:18px 20px; background:#fff; border:1px solid var(--gray-200); border-radius:12px; margin-bottom:14px; }
+  .product-head .img { width:60px; height:60px; border-radius:8px; background:var(--gray-100); display:flex; align-items:center; justify-content:center; color:var(--gray-400); font-weight:700; flex-shrink:0; }
+  .product-head .name { font-size:16px; font-weight:600; }
+  .product-head .meta { font-size:12px; color:var(--gray-500); margin-top:2px; }
+  .product-head .meta .mono { font-family:var(--font-mono); }
+
+  /* tier table */
+  .tier-card { background:#fff; border:1px solid var(--gray-200); border-radius:12px; overflow:hidden; }
+  .tier-card .hd { padding:14px 18px; border-bottom:1px solid var(--gray-200); display:flex; align-items:center; gap:10px; }
+  .tier-card .hd h3 { margin:0; font-size:14px; font-weight:600; flex:1; }
+  .tier-card .hd .right { display:flex; gap:6px; align-items:center; }
+  .tier-table { width:100%; border-collapse:collapse; }
+  .tier-table th { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--gray-500); text-align:left; padding:10px 14px; background:var(--gray-50); border-bottom:1px solid var(--gray-200); }
+  .tier-table th.right { text-align:right; }
+  .tier-table th.center { text-align:center; }
+  .tier-table td { padding:12px 14px; border-bottom:1px solid var(--gray-100); font-size:13px; vertical-align:middle; }
+  .tier-table tr:last-child td { border-bottom:0; }
+  .tier-table .qty-cell { display:flex; align-items:center; gap:8px; font-family:var(--font-mono); }
+  .tier-table .qty-cell input { width:60px; padding:6px 8px; border:1px solid var(--border-3); border-radius:6px; font-family:var(--font-mono); font-size:12px; text-align:right; }
+  .tier-table .price-cell input { width:90px; padding:6px 8px; border:1px solid var(--border-3); border-radius:6px; font-family:var(--font-mono); font-size:12px; text-align:right; }
+  .tier-table .price-cell input.err { border-color:var(--status-error); background:rgba(231,76,60,.04); color:var(--status-error); }
+  .tier-table .discount { font-family:var(--font-mono); font-weight:600; }
+  .tier-table .discount.up { color:var(--success); }
+  .tier-table .discount.down { color:var(--status-error); }
+  .tier-table .grab { color:var(--gray-400); cursor:grab; }
+  .tier-table .del-btn { background:none; border:0; color:var(--gray-400); cursor:pointer; padding:4px; border-radius:5px; }
+  .tier-table .del-btn:hover { color:var(--status-error); background:rgba(231,76,60,.06); }
+  .tier-table .err-row { background:rgba(231,76,60,.03); }
+  .tier-table .err-msg { font-size:11px; color:var(--status-error); display:flex; align-items:center; gap:5px; margin-top:5px; }
+  .tier-table .err-msg svg { width:12px; height:12px; }
+
+  .add-tier { padding:12px 14px; background:var(--gray-50); border-top:1px solid var(--gray-100); }
+  .add-tier button { background:none; border:1px dashed var(--gray-300); padding:8px 14px; border-radius:8px; color:var(--brand-blue); font-size:13px; font-weight:500; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
+  .add-tier button:hover { background:rgba(30,77,140,.05); border-color:var(--brand-blue); }
+
+  /* preview */
+  .preview-card { background:#fff; border:1px solid var(--gray-200); border-radius:12px; padding:18px 20px; margin-top:14px; }
+  .preview-card h4 { margin:0 0 12px; font-size:13px; font-weight:600; display:flex; align-items:center; gap:6px; }
+  .preview-card h4 svg { width:14px; height:14px; color:var(--brand-blue); }
+  .ladder { display:flex; gap:6px; align-items:flex-end; height:120px; padding:8px 4px; }
+  .rung { flex:1; border-radius:6px 6px 0 0; background:linear-gradient(180deg, var(--brand-blue) 0%, #2563A8 100%); position:relative; min-width:50px; }
+  .rung .lbl { position:absolute; top:-22px; left:0; right:0; text-align:center; font-family:var(--font-mono); font-size:11px; color:var(--gray-500); }
+  .rung .price { position:absolute; bottom:-22px; left:0; right:0; text-align:center; font-family:var(--font-mono); font-size:12px; font-weight:600; color:var(--dark); }
+
+  /* sample buyer pricing */
+  .buyer-card { background:rgba(30,77,140,.04); border:1px solid rgba(30,77,140,.2); border-radius:10px; padding:14px 16px; margin-top:14px; display:flex; gap:16px; align-items:center; }
+  .buyer-card .ic { width:36px; height:36px; border-radius:8px; background:#fff; color:var(--brand-blue); display:flex; align-items:center; justify-content:center; }
+  .buyer-card .body { flex:1; font-size:12px; color:var(--gray-700); line-height:1.5; }
+  .buyer-card .body strong { color:var(--dark); }
+  .buyer-card .calc { font-family:var(--font-mono); }
+
+  /* scope picker (right rail) */
+  .editor-grid { display:grid; grid-template-columns:1fr 280px; gap:18px; align-items:start; }
+  @media (max-width:880px) { .editor-grid { grid-template-columns:1fr; } }
+  .scope-card { background:#fff; border:1px solid var(--gray-200); border-radius:12px; padding:16px 18px; }
+  .scope-card h4 { margin:0 0 10px; font-size:13px; font-weight:600; }
+  .scope-card .row { padding:9px 10px; border-radius:7px; cursor:pointer; display:flex; align-items:flex-start; gap:8px; font-size:13px; margin-bottom:4px; }
+  .scope-card .row .radio { width:14px; height:14px; border:2px solid var(--gray-300); border-radius:50%; flex-shrink:0; margin-top:3px; position:relative; }
+  .scope-card .row.selected { background:rgba(30,77,140,.05); }
+  .scope-card .row.selected .radio { border-color:var(--brand-blue); }
+  .scope-card .row.selected .radio::after { content:""; position:absolute; inset:2px; border-radius:50%; background:var(--brand-blue); }
+  .scope-card .row .body .ttl { font-weight:500; color:var(--dark); }
+  .scope-card .row .body .desc { font-size:11px; color:var(--gray-500); margin-top:2px; line-height:1.4; }
+
+  .footbar { display:flex; align-items:center; justify-content:space-between; margin-top:18px; padding:12px 16px; background:#fff; border:1px solid var(--gray-200); border-radius:12px; box-shadow:var(--shadow-sm); position:sticky; bottom:14px; }
+  .footbar .left { font-size:13px; color:var(--gray-500); display:flex; align-items:center; gap:8px; }
+  .footbar .actions { display:flex; gap:8px; }
+
+  .pulse-dot { width:8px; height:8px; border-radius:50%; background:var(--status-warning); animation:pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% {opacity:1} 50% {opacity:.4} }
+
+  /* empty */
+  .empty { padding:48px 24px; text-align:center; }
+  .empty .ic { width:56px; height:56px; border-radius:50%; background:rgba(30,77,140,.08); color:var(--brand-blue); display:flex; align-items:center; justify-content:center; margin:0 auto 14px; }
+  .empty h3 { margin:0; font-size:16px; font-weight:600; }
+  .empty .sub { font-size:13px; color:var(--gray-500); margin-top:6px; max-width:420px; margin-left:auto; margin-right:auto; line-height:1.5; }
+
+  /* segmented preview tabs */
+  .seg { display:inline-flex; padding:2px; background:var(--gray-100); border-radius:8px; }
+  .seg button { background:none; border:0; padding:5px 10px; font-size:12px; color:var(--gray-500); border-radius:6px; cursor:pointer; }
+  .seg button.active { background:#fff; color:var(--dark); font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.05); }
+
+  /* customer-group chip pills */
+  .cg-pills { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .cg-pill { padding:5px 10px; background:var(--gray-100); border-radius:9999px; font-size:11px; font-weight:500; color:var(--gray-700); display:inline-flex; align-items:center; gap:5px; }
+  .cg-pill.active { background:rgba(0,184,148,.12); color:var(--success); }
+  .cg-pill svg { width:11px; height:11px; }
+
+  .err-banner { background:rgba(231,76,60,.06); border:1px solid rgba(231,76,60,.25); border-radius:10px; padding:12px 14px; display:flex; gap:10px; align-items:flex-start; margin-bottom:14px; }
+  .err-banner .ic { color:var(--status-error); flex-shrink:0; margin-top:1px; }
+  .err-banner .ic svg { width:16px; height:16px; }
+  .err-banner .ttl { font-size:13px; font-weight:600; }
+  .err-banner .desc { font-size:12px; color:var(--gray-700); margin-top:2px; line-height:1.5; }
+
+</style>
+</head>
+<body>
+<div class="shell">
+<header style="margin-bottom:32px">
+  <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--gray-500);margin-bottom:6px">Wholesaler · Product editor</div>
+  <h1 style="margin:0;font-size:28px;font-weight:700;letter-spacing:-0.01em">Tier pricing editor</h1>
+  <div style="margin-top:6px;font-size:14px;color:var(--gray-500);max-width:680px;line-height:1.5">Volume-based price ladder inside the product edit form. 5 states.</div>
+</header>
+
+<div class="states">
+
+  <!-- 1. Empty (flat-only) -->
+  <section data-screen-label="01 Empty">
+    <div class="state-label">
+      <span class="num">01</span><span class="ttl">Empty · Flat-priced product</span>
+      <span class="meta">No tiers yet · CTA to add ladder</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head"><span class="tl"></span><span class="tl"></span><span class="tl"></span><span class="crumb">Catalog / Products / <span class="here">Edit</span></span></div>
+      <div class="frame-body">
+        <div class="ph"><h1>Pricing</h1><div class="sub">All buyers pay one price. Add tiers to reward larger orders.</div></div>
+        <div class="container">
+          <div class="product-head">
+            <div class="img">RZ</div>
+            <div style="flex:1">
+              <div class="name">Raz TN9000 · Watermelon Ice</div>
+              <div class="meta"><span class="mono">RZ-TN9-WMI</span> · Disposables · Case of 6</div>
+            </div>
+            <span class="badge badge-success">ACTIVE</span>
+          </div>
+
+          <div class="tier-card">
+            <div class="hd">
+              <h3>Volume tiers</h3>
+              <div class="right"><span style="font-size:12px;color:var(--gray-500)">Currently flat-priced</span></div>
+            </div>
+            <div class="empty">
+              <div class="ic"><i data-lucide="trending-down"></i></div>
+              <h3>No tiers configured</h3>
+              <div class="sub">Buyers pay <strong style="font-family:var(--font-mono);color:var(--dark)">$12.50</strong>/unit at any quantity. Add tiers to incentivize bigger cases — most sellers see 18% more case-quantity orders.</div>
+              <div style="margin-top:18px;display:inline-flex;gap:8px">
+                <button class="btn btn-primary"><i data-lucide="plus" style="width:14px;height:14px"></i>Add tier ladder</button>
+                <button class="btn btn-secondary"><i data-lucide="copy" style="width:14px;height:14px"></i>Copy from another product</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. Editing (populated) -->
+  <section data-screen-label="02 Editing">
+    <div class="state-label">
+      <span class="num">02</span><span class="ttl">Editing · 4-tier ladder + live preview</span>
+      <span class="meta">Drag-reorderable rows · auto-discount % · ladder chart preview</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head"><span class="tl"></span><span class="tl"></span><span class="tl"></span><span class="crumb">Catalog / Products / <span class="here">Edit</span></span></div>
+      <div class="frame-body">
+        <div class="ph"><h1>Pricing</h1><div class="sub">Higher quantities get lower per-unit pricing. Buyers see this ladder on the product page.</div></div>
+        <div class="container">
+
+          <div class="product-head">
+            <div class="img">RZ</div>
+            <div style="flex:1">
+              <div class="name">Raz TN9000 · Watermelon Ice</div>
+              <div class="meta"><span class="mono">RZ-TN9-WMI</span> · Disposables · MOQ 6 · Case of 6</div>
+            </div>
+            <span class="badge badge-success">ACTIVE</span>
+          </div>
+
+          <div class="editor-grid">
+            <div>
+              <div class="tier-card">
+                <div class="hd">
+                  <h3>Volume tiers</h3>
+                  <div class="right">
+                    <span style="font-size:11px;color:var(--gray-500)">Base price</span>
+                    <span style="font-family:var(--font-mono);font-weight:600;color:var(--dark)">$12.50</span>
+                    <button class="btn btn-secondary btn-sm" style="height:28px;padding:0 10px;font-size:12px"><i data-lucide="edit-2" style="width:12px;height:12px"></i>Edit</button>
+                  </div>
+                </div>
+                <table class="tier-table">
+                  <thead>
+                    <tr>
+                      <th style="width:30px"></th>
+                      <th>Quantity</th>
+                      <th class="right">Per-unit price</th>
+                      <th class="right">Discount</th>
+                      <th class="right">Margin*</th>
+                      <th style="width:30px"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><i data-lucide="grip-vertical" class="grab" style="width:14px;height:14px"></i></td>
+                      <td>
+                        <div class="qty-cell">
+                          <input value="6"> – <input value="11">
+                        </div>
+                      </td>
+                      <td class="right price-cell"><input value="$12.50"></td>
+                      <td class="right discount" style="color:var(--gray-500)">—</td>
+                      <td class="right" style="color:var(--gray-500);font-family:var(--font-mono)">42%</td>
+                      <td><button class="del-btn"><i data-lucide="x" style="width:14px;height:14px"></i></button></td>
+                    </tr>
+                    <tr>
+                      <td><i data-lucide="grip-vertical" class="grab" style="width:14px;height:14px"></i></td>
+                      <td>
+                        <div class="qty-cell">
+                          <input value="12"> – <input value="23">
+                        </div>
+                      </td>
+                      <td class="right price-cell"><input value="$11.75"></td>
+                      <td class="right discount up">−6%</td>
+                      <td class="right" style="font-family:var(--font-mono)">38%</td>
+                      <td><button class="del-btn"><i data-lucide="x" style="width:14px;height:14px"></i></button></td>
+                    </tr>
+                    <tr>
+                      <td><i data-lucide="grip-vertical" class="grab" style="width:14px;height:14px"></i></td>
+                      <td>
+                        <div class="qty-cell">
+                          <input value="24"> – <input value="47">
+                        </div>
+                      </td>
+                      <td class="right price-cell"><input value="$10.99"></td>
+                      <td class="right discount up">−12%</td>
+                      <td class="right" style="font-family:var(--font-mono)">34%</td>
+                      <td><button class="del-btn"><i data-lucide="x" style="width:14px;height:14px"></i></button></td>
+                    </tr>
+                    <tr>
+                      <td><i data-lucide="grip-vertical" class="grab" style="width:14px;height:14px"></i></td>
+                      <td>
+                        <div class="qty-cell">
+                          <input value="48"> – <input value="∞" style="color:var(--gray-400)">
+                        </div>
+                      </td>
+                      <td class="right price-cell"><input value="$9.85"></td>
+                      <td class="right discount up">−21%</td>
+                      <td class="right" style="font-family:var(--font-mono)">26%</td>
+                      <td><button class="del-btn"><i data-lucide="x" style="width:14px;height:14px"></i></button></td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div class="add-tier">
+                  <button><i data-lucide="plus" style="width:13px;height:13px"></i>Add tier</button>
+                  <span style="font-size:11px;color:var(--gray-500);margin-left:10px">* Margins use $7.25 unit cost from inventory</span>
+                </div>
+              </div>
+
+              <div class="preview-card">
+                <h4><i data-lucide="bar-chart-3"></i>Ladder preview</h4>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+                  <div class="seg">
+                    <button class="active">Chart</button>
+                    <button>Buyer's view</button>
+                  </div>
+                  <span style="font-size:11px;color:var(--gray-500)">Hover a rung to see qty range</span>
+                </div>
+                <div style="padding:24px 4px 32px">
+                  <div class="ladder">
+                    <div class="rung" style="height:100%">
+                      <div class="lbl">6–11</div>
+                      <div class="price">$12.50</div>
+                    </div>
+                    <div class="rung" style="height:88%">
+                      <div class="lbl">12–23</div>
+                      <div class="price">$11.75</div>
+                    </div>
+                    <div class="rung" style="height:74%">
+                      <div class="lbl">24–47</div>
+                      <div class="price">$10.99</div>
+                    </div>
+                    <div class="rung" style="height:58%">
+                      <div class="lbl">48+</div>
+                      <div class="price">$9.85</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="buyer-card">
+                  <div class="ic"><i data-lucide="user"></i></div>
+                  <div class="body">
+                    <div><strong>Sample order:</strong> A buyer orders <span class="calc">36 units</span> → pays <span class="calc">$10.99/unit</span> = <span class="calc"><strong>$395.64</strong></span> · saves <span class="calc">$54.36</span> vs. base.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <aside>
+              <div class="scope-card">
+                <h4>Pricing scope</h4>
+                <div class="row selected">
+                  <div class="radio"></div>
+                  <div class="body"><div class="ttl">All buyers</div><div class="desc">Same ladder applies to every approved retailer.</div></div>
+                </div>
+                <div class="row">
+                  <div class="radio"></div>
+                  <div class="body"><div class="ttl">By customer group</div><div class="desc">Different tiers for VIP, regional, or wholesale partners.</div></div>
+                </div>
+                <div class="row">
+                  <div class="radio"></div>
+                  <div class="body"><div class="ttl">Negotiated only</div><div class="desc">Hide ladder, manual quotes per buyer.</div></div>
+                </div>
+              </div>
+
+              <div class="scope-card" style="margin-top:14px">
+                <h4>Eligible groups</h4>
+                <div class="cg-pills">
+                  <span class="cg-pill active"><i data-lucide="check"></i>All retailers</span>
+                  <span class="cg-pill">Verified</span>
+                  <span class="cg-pill">Net-30</span>
+                  <span class="cg-pill">VIP</span>
+                </div>
+              </div>
+
+              <div class="scope-card" style="margin-top:14px">
+                <h4>Effective dates</h4>
+                <div style="font-size:12px;color:var(--gray-500);line-height:1.5">Live <strong style="color:var(--success)">now</strong> until you change it. Schedule a future change from the calendar.</div>
+                <button class="btn btn-secondary btn-sm" style="margin-top:10px;width:100%"><i data-lucide="calendar" style="width:13px;height:13px"></i>Schedule change</button>
+              </div>
+            </aside>
+          </div>
+
+          <div class="footbar">
+            <div class="left"><span class="pulse-dot"></span><span style="color:var(--dark);font-weight:500">3 unsaved changes</span> · last edit 12s ago</div>
+            <div class="actions">
+              <button class="btn-text" style="height:38px;padding:0 12px;font-size:13px;color:var(--gray-500);background:none;border:0;cursor:pointer">Discard</button>
+              <button class="btn btn-secondary btn-sm" style="height:38px">Save as draft</button>
+              <button class="btn btn-primary btn-sm" style="height:38px"><i data-lucide="check" style="width:13px;height:13px"></i>Publish ladder</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. Validation error: gap + inverted price -->
+  <section data-screen-label="03 Errors">
+    <div class="state-label">
+      <span class="num">03</span><span class="ttl">Validation · Gap + inverted price</span>
+      <span class="meta">Two errors caught inline · publish blocked</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head"><span class="tl"></span><span class="tl"></span><span class="tl"></span><span class="crumb">Catalog / Products / <span class="here">Edit</span></span></div>
+      <div class="frame-body">
+        <div class="ph"><h1>Pricing</h1><div class="sub">Fix highlighted rows before publishing.</div></div>
+        <div class="container">
+          <div class="product-head">
+            <div class="img">RZ</div>
+            <div style="flex:1"><div class="name">Raz TN9000 · Watermelon Ice</div><div class="meta"><span class="mono">RZ-TN9-WMI</span> · Disposables · Case of 6</div></div>
+            <span class="badge badge-warning">DRAFT</span>
+          </div>
+
+          <div class="err-banner">
+            <span class="ic"><i data-lucide="alert-octagon"></i></span>
+            <div>
+              <div class="ttl">2 issues prevent publishing</div>
+              <div class="desc">Tier 2's range leaves a gap (12–23 then 36+ skips 24–35) and tier 3's price is higher than tier 2's. Each tier must cost less than the one below it.</div>
+            </div>
+          </div>
+
+          <div class="tier-card">
+            <div class="hd"><h3>Volume tiers</h3></div>
+            <table class="tier-table">
+              <thead>
+                <tr><th style="width:30px"></th><th>Quantity</th><th class="right">Per-unit price</th><th class="right">Discount</th><th class="right">Margin*</th><th style="width:30px"></th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><i data-lucide="grip-vertical" class="grab" style="width:14px;height:14px"></i></td>
+                  <td><div class="qty-cell"><input value="6"> – <input value="11"></div></td>
+                  <td class="right price-cell"><input value="$12.50"></td>
+                  <td class="right discount" style="color:var(--gray-500)">—</td>
+                  <td class="right" style="font-family:var(--font-mono);color:var(--gray-500)">42%</td>
+                  <td><button class="del-btn"><i data-lucide="x" style="width:14px;height:14px"></i></button></td>
+                </tr>
+                <tr class="err-row">
+                  <td><i data-lucide="grip-vertical" class="grab" style="width:14px;height:14px"></i></td>
+                  <td>
+                    <div class="qty-cell"><input value="12"> – <input value="23" class="err"></div>
+                    <div class="err-msg"><i data-lucide="alert-circle"></i>Range gap — next tier starts at 36, leaving 24–35 unpriced</div>
+                  </td>
+                  <td class="right price-cell"><input value="$11.75"></td>
+                  <td class="right discount up">−6%</td>
+                  <td class="right" style="font-family:var(--font-mono)">38%</td>
+                  <td><button class="del-btn"><i data-lucide="x" style="width:14px;height:14px"></i></button></td>
+                </tr>
+                <tr class="err-row">
+                  <td><i data-lucide="grip-vertical" class="grab" style="width:14px;height:14px"></i></td>
+                  <td><div class="qty-cell"><input value="36"> – <input value="47"></div></td>
+                  <td class="right price-cell"><input value="$12.10" class="err"></td>
+                  <td class="right discount down">+3%</td>
+                  <td class="right" style="font-family:var(--font-mono)">40%</td>
+                  <td><button class="del-btn"><i data-lucide="x" style="width:14px;height:14px"></i></button></td>
+                </tr>
+                <tr>
+                  <td colspan="2" style="padding:0 14px 12px"><div class="err-msg"><i data-lucide="alert-circle"></i>Price ($12.10) must be lower than tier 2's ($11.75) — tiers must descend</div></td>
+                  <td colspan="4"></td>
+                </tr>
+                <tr>
+                  <td><i data-lucide="grip-vertical" class="grab" style="width:14px;height:14px"></i></td>
+                  <td><div class="qty-cell"><input value="48"> – <input value="∞" style="color:var(--gray-400)"></div></td>
+                  <td class="right price-cell"><input value="$9.85"></td>
+                  <td class="right discount up">−21%</td>
+                  <td class="right" style="font-family:var(--font-mono)">26%</td>
+                  <td><button class="del-btn"><i data-lucide="x" style="width:14px;height:14px"></i></button></td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="add-tier">
+              <button><i data-lucide="plus" style="width:13px;height:13px"></i>Add tier</button>
+              <button style="margin-left:8px;border:1px dashed rgba(0,184,148,.4);color:var(--success)"><i data-lucide="zap" style="width:13px;height:13px"></i>Auto-fix gaps</button>
+            </div>
+          </div>
+
+          <div class="footbar" style="border-color:rgba(231,76,60,.3)">
+            <div class="left" style="color:var(--status-error)"><i data-lucide="alert-circle" style="width:14px;height:14px"></i><strong style="font-weight:500">2 errors must be fixed before publishing</strong></div>
+            <div class="actions">
+              <button class="btn btn-secondary btn-sm" style="height:38px">Save as draft</button>
+              <button class="btn btn-primary btn-sm" style="height:38px;opacity:.5;cursor:not-allowed" disabled>Publish ladder</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Customer-group split -->
+  <section data-screen-label="04 Customer groups">
+    <div class="state-label">
+      <span class="num">04</span><span class="ttl">By customer group · Three ladders</span>
+      <span class="meta">VIP, Verified-only, and Public ladders side-by-side</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head"><span class="tl"></span><span class="tl"></span><span class="tl"></span><span class="crumb">Catalog / Products / <span class="here">Edit</span></span></div>
+      <div class="frame-body">
+        <div class="ph"><h1>Pricing · by customer group</h1><div class="sub">Each group sees its own ladder. Buyers outside any group fall back to "Public".</div></div>
+        <div class="container">
+          <div class="product-head">
+            <div class="img">RZ</div>
+            <div style="flex:1"><div class="name">Raz TN9000 · Watermelon Ice</div><div class="meta"><span class="mono">RZ-TN9-WMI</span> · Disposables · Case of 6</div></div>
+            <span class="badge badge-success">ACTIVE</span>
+          </div>
+
+          <div style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--gray-200);padding-bottom:0">
+            <div style="padding:10px 14px;font-size:13px;font-weight:600;color:var(--brand-blue);border-bottom:2px solid var(--brand-blue);margin-bottom:-1px;display:flex;align-items:center;gap:6px">
+              <i data-lucide="star" style="width:14px;height:14px;color:var(--brand-orange)"></i>VIP <span style="font-family:var(--font-mono);font-size:11px;color:var(--gray-500);font-weight:500">· 8 buyers</span>
+            </div>
+            <div style="padding:10px 14px;font-size:13px;color:var(--gray-500);cursor:pointer;display:flex;align-items:center;gap:6px">
+              <i data-lucide="shield-check" style="width:14px;height:14px"></i>Verified <span style="font-family:var(--font-mono);font-size:11px">· 142 buyers</span>
+            </div>
+            <div style="padding:10px 14px;font-size:13px;color:var(--gray-500);cursor:pointer;display:flex;align-items:center;gap:6px">
+              <i data-lucide="globe" style="width:14px;height:14px"></i>Public <span style="font-family:var(--font-mono);font-size:11px">· fallback</span>
+            </div>
+            <button style="margin-left:auto;background:none;border:0;color:var(--brand-teal);font-size:13px;font-weight:500;cursor:pointer;padding:8px 12px"><i data-lucide="plus" style="width:13px;height:13px"></i>Add group</button>
+          </div>
+
+          <div class="tier-card">
+            <div class="hd">
+              <h3 style="display:flex;align-items:center;gap:6px"><i data-lucide="star" style="width:14px;height:14px;color:var(--brand-orange)"></i>VIP ladder</h3>
+              <div class="right" style="font-size:12px;color:var(--gray-500)">Effective for: <strong style="color:var(--dark)">Top 8 buyers</strong> · 24% of revenue</div>
+            </div>
+            <table class="tier-table">
+              <thead><tr><th>Quantity</th><th class="right">Per-unit</th><th class="right">vs. Public</th><th class="right">Saves</th></tr></thead>
+              <tbody>
+                <tr><td><span class="qty-cell" style="font-family:var(--font-mono)">6 – 11</span></td><td class="right" style="font-family:var(--font-mono);font-weight:600">$11.40</td><td class="right discount up">−9%</td><td class="right" style="font-family:var(--font-mono);color:var(--success)">$1.10</td></tr>
+                <tr><td><span class="qty-cell" style="font-family:var(--font-mono)">12 – 23</span></td><td class="right" style="font-family:var(--font-mono);font-weight:600">$10.50</td><td class="right discount up">−11%</td><td class="right" style="font-family:var(--font-mono);color:var(--success)">$1.25</td></tr>
+                <tr><td><span class="qty-cell" style="font-family:var(--font-mono)">24 – 47</span></td><td class="right" style="font-family:var(--font-mono);font-weight:600">$9.75</td><td class="right discount up">−11%</td><td class="right" style="font-family:var(--font-mono);color:var(--success)">$1.24</td></tr>
+                <tr><td><span class="qty-cell" style="font-family:var(--font-mono)">48+</span></td><td class="right" style="font-family:var(--font-mono);font-weight:600">$8.85</td><td class="right discount up">−10%</td><td class="right" style="font-family:var(--font-mono);color:var(--success)">$1.00</td></tr>
+              </tbody>
+            </table>
+            <div class="add-tier">
+              <button><i data-lucide="plus" style="width:13px;height:13px"></i>Add tier</button>
+              <button style="margin-left:8px"><i data-lucide="copy" style="width:13px;height:13px"></i>Copy from Verified</button>
+            </div>
+          </div>
+
+          <div class="buyer-card" style="margin-top:14px">
+            <div class="ic"><i data-lucide="info"></i></div>
+            <div class="body">VIP buyers (e.g. <strong>Cleveland Tobacco Co</strong>, <strong>Buckeye Smoke Distributors</strong>) see this ladder automatically. <a href="#" style="color:var(--brand-teal);font-weight:500">Manage VIP membership →</a></div>
+          </div>
+
+          <div class="footbar">
+            <div class="left">All saved · last published 4 hours ago</div>
+            <div class="actions">
+              <button class="btn btn-secondary btn-sm" style="height:38px"><i data-lucide="eye" style="width:13px;height:13px"></i>Preview as VIP</button>
+              <button class="btn btn-primary btn-sm" style="height:38px"><i data-lucide="check" style="width:13px;height:13px"></i>Done editing</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. Buyer-side preview -->
+  <section data-screen-label="05 Buyer view">
+    <div class="state-label">
+      <span class="num">05</span><span class="ttl">Buyer's view · How retailers see it</span>
+      <span class="meta">Read-only ladder on the product page</span>
+    </div>
+    <div class="frame">
+      <div class="frame-head"><span class="tl"></span><span class="tl"></span><span class="tl"></span><span class="crumb">Marketplace / Products / <span class="here">Raz TN9000</span></span></div>
+      <div class="frame-body">
+        <div class="container">
+          <div style="background:#fff;border:1px solid var(--gray-200);border-radius:12px;padding:24px;display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:start">
+            <div>
+              <div style="aspect-ratio:1;background:var(--gray-100);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--gray-400);font-size:48px;font-weight:700">RZ</div>
+            </div>
+            <div>
+              <div style="font-size:11px;font-weight:600;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.06em">Raz · Disposables</div>
+              <h2 style="margin:6px 0 8px;font-size:22px">Raz TN9000 · Watermelon Ice</h2>
+              <div style="font-size:13px;color:var(--gray-500);margin-bottom:14px">9000 puffs · 6.5% nic salt · case of 6</div>
+
+              <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:14px">
+                <span style="font-family:var(--font-mono);font-size:28px;font-weight:700;color:var(--success)">$10.99</span>
+                <span style="font-size:13px;color:var(--gray-500)">/unit at 24+</span>
+                <span class="badge badge-best" style="margin-left:6px">BEST PRICE</span>
+              </div>
+
+              <div style="border:1px solid var(--gray-200);border-radius:10px;overflow:hidden;margin-bottom:14px">
+                <div style="padding:10px 14px;background:var(--gray-50);font-size:11px;font-weight:600;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.06em;display:flex;align-items:center;gap:6px">
+                  <i data-lucide="trending-down" style="width:13px;height:13px"></i>Volume pricing
+                </div>
+                <table class="tier-table" style="font-size:13px">
+                  <tbody>
+                    <tr><td style="font-family:var(--font-mono)">6 – 11</td><td class="right" style="font-family:var(--font-mono);font-weight:600">$12.50/unit</td><td class="right" style="color:var(--gray-400)">base</td></tr>
+                    <tr><td style="font-family:var(--font-mono)">12 – 23</td><td class="right" style="font-family:var(--font-mono);font-weight:600">$11.75/unit</td><td class="right discount up">save 6%</td></tr>
+                    <tr style="background:rgba(0,184,148,.04)"><td style="font-family:var(--font-mono);font-weight:600;color:var(--success)">24 – 47 ← you</td><td class="right" style="font-family:var(--font-mono);font-weight:700;color:var(--success)">$10.99/unit</td><td class="right discount up">save 12%</td></tr>
+                    <tr><td style="font-family:var(--font-mono)">48+</td><td class="right" style="font-family:var(--font-mono);font-weight:600">$9.85/unit</td><td class="right discount up">save 21%</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div style="background:rgba(0,184,148,.06);border:1px dashed rgba(0,184,148,.4);border-radius:10px;padding:10px 12px;font-size:12px;color:var(--dark);margin-bottom:18px;display:flex;gap:10px;align-items:center">
+                <i data-lucide="zap" style="width:14px;height:14px;color:var(--success)"></i>
+                <div>Add <strong>13 more units</strong> to unlock <strong style="color:var(--success);font-family:var(--font-mono)">$9.85/unit</strong> — save another <span style="font-family:var(--font-mono)">$15.40</span>.</div>
+              </div>
+
+              <div style="display:flex;gap:8px;align-items:center">
+                <input type="number" value="36" style="width:80px;padding:10px 12px;border:1px solid var(--border-3);border-radius:8px;font-family:var(--font-mono);text-align:center;font-size:14px;font-weight:600">
+                <button class="btn btn-cta" style="flex:1"><i data-lucide="shopping-cart" style="width:15px;height:15px"></i>Add to cart · $395.64</button>
+              </div>
+              <div style="margin-top:8px;font-size:11px;color:var(--gray-500)">MOQ 6 · Ships in 2 business days · UPS Ground from Cleveland, OH</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</div>
+<script>if (window.lucide) lucide.createIcons();</script>
+</body>
+</html>

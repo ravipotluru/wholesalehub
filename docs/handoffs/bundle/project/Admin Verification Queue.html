@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Admin Verification Queue — WholesaleHub</title>
+<link rel="stylesheet" href="_kit.css" />
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  body { background:#EFF1F4; }
+  .shell { max-width:1280px; margin:0 auto; padding:32px 24px 64px; }
+  .states { display:flex; flex-direction:column; gap:48px; }
+  .state-label { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .state-label .num { font-family:var(--font-mono); font-size:11px; font-weight:600; background:var(--brand-blue); color:#fff; border-radius:9999px; padding:2px 8px; }
+  .state-label .ttl { font-size:13px; font-weight:600; color:var(--dark); }
+  .state-label .meta { font-size:12px; color:var(--gray-500); }
+
+  .frame { background:#fff; border:1px solid var(--gray-200); border-radius:12px; overflow:hidden; box-shadow:var(--shadow-sm); }
+  .frame-head { height:36px; background:#fff; border-bottom:1px solid var(--gray-200); display:flex; align-items:center; gap:6px; padding:0 14px; }
+  .frame-head .tl { width:10px; height:10px; border-radius:50%; background:#E5E7EB; }
+  .frame-head .crumb { margin-left:14px; font-size:12px; color:var(--gray-500); }
+  .frame-head .crumb .here { color:var(--dark); font-weight:500; }
+
+  .admin-shell { display:grid; grid-template-columns:200px 1fr; min-height:680px; }
+  .admin-side { background:#0E1A2B; color:rgba(255,255,255,.7); padding:18px 0; }
+  .admin-side .br { padding:0 18px 14px; border-bottom:1px solid rgba(255,255,255,.08); display:flex; align-items:center; gap:8px; color:#fff; font-weight:600; font-size:14px; }
+  .admin-side .br .sq { width:24px; height:24px; border-radius:6px; background:var(--brand-orange); display:flex; align-items:center; justify-content:center; }
+  .admin-side .grp { font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:rgba(255,255,255,.4); padding:18px 18px 6px; }
+  .admin-side a { display:flex; align-items:center; gap:9px; padding:8px 18px; font-size:13px; color:rgba(255,255,255,.7); }
+  .admin-side a:hover { color:#fff; background:rgba(255,255,255,.04); }
+  .admin-side a.active { color:#fff; background:rgba(245,127,23,.12); border-left:3px solid var(--brand-orange); padding-left:15px; }
+  .admin-side a svg { width:15px; height:15px; }
+  .admin-side a .badge { margin-left:auto; background:var(--brand-orange); color:#fff; font-size:10px; font-weight:700; font-family:var(--font-mono); padding:1px 6px; border-radius:9999px; }
+
+  .admin-main { background:#FAFBFD; padding:0; display:flex; flex-direction:column; }
+  .admin-top { background:#fff; border-bottom:1px solid var(--gray-200); padding:14px 24px; display:flex; align-items:center; gap:12px; }
+  .admin-top .back { color:var(--gray-500); font-size:12px; display:flex; align-items:center; gap:5px; }
+  .admin-top .ttl { font-size:18px; font-weight:700; letter-spacing:-0.01em; }
+  .admin-top .pills { display:flex; gap:6px; margin-left:auto; }
+  .admin-top .pill { font-size:11px; font-family:var(--font-mono); padding:3px 9px; border-radius:9999px; background:var(--gray-100); color:var(--gray-700); }
+  .admin-top .pill.warn { background:rgba(245,127,23,.12); color:var(--brand-orange); }
+
+  /* Queue tabs */
+  .qtabs { background:#fff; border-bottom:1px solid var(--gray-200); padding:0 24px; display:flex; gap:0; }
+  .qtabs .tab { padding:12px 16px; font-size:13px; color:var(--gray-500); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; display:flex; align-items:center; gap:7px; }
+  .qtabs .tab.active { color:var(--brand-blue); border-bottom-color:var(--brand-blue); font-weight:600; }
+  .qtabs .tab .cnt { font-family:var(--font-mono); font-size:11px; padding:1px 7px; border-radius:9999px; background:var(--gray-100); color:var(--gray-700); }
+  .qtabs .tab.active .cnt { background:var(--brand-blue); color:#fff; }
+
+  /* Queue toolbar */
+  .qtools { padding:14px 24px; display:flex; align-items:center; gap:10px; border-bottom:1px solid var(--gray-200); background:#fff; }
+  .qtools .filter { display:inline-flex; align-items:center; gap:6px; padding:7px 12px; border:1px solid var(--gray-200); border-radius:8px; font-size:13px; color:var(--gray-700); cursor:pointer; }
+  .qtools .filter svg { width:13px; height:13px; color:var(--gray-400); }
+  .qtools .filter.active { border-color:var(--brand-blue); color:var(--brand-blue); background:rgba(30,77,140,.04); }
+  .qtools .search { flex:1; max-width:280px; position:relative; }
+  .qtools .search input { width:100%; height:32px; padding:0 12px 0 32px; border:1px solid var(--border-3); border-radius:8px; font-size:13px; }
+  .qtools .search svg { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:var(--gray-400); width:14px; height:14px; }
+  .qtools .right { margin-left:auto; display:flex; gap:8px; align-items:center; font-size:12px; color:var(--gray-500); }
+
+  /* Two-pane layout */
+  .qbody { flex:1; display:grid; grid-template-columns:380px 1fr; min-height:520px; }
+  .qlist { background:#fff; border-right:1px solid var(--gray-200); overflow-y:auto; }
+  .qrow { padding:14px 18px; border-bottom:1px solid var(--gray-100); cursor:pointer; display:flex; gap:12px; align-items:flex-start; position:relative; }
+  .qrow:hover { background:var(--gray-50); }
+  .qrow.selected { background:rgba(30,77,140,.05); border-left:3px solid var(--brand-blue); padding-left:15px; }
+  .qrow .av { width:36px; height:36px; border-radius:8px; background:var(--gray-100); color:var(--gray-700); display:flex; align-items:center; justify-content:center; font-weight:600; font-size:12px; flex-shrink:0; }
+  .qrow .body { flex:1; min-width:0; }
+  .qrow .top { display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:3px; }
+  .qrow .name { font-size:13px; font-weight:600; color:var(--dark); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .qrow .age { font-size:11px; color:var(--gray-500); font-family:var(--font-mono); flex-shrink:0; }
+  .qrow .biz { font-size:12px; color:var(--gray-500); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .qrow .tags { display:flex; gap:5px; margin-top:7px; flex-wrap:wrap; }
+  .qrow .tag { font-size:10px; padding:2px 7px; border-radius:9999px; font-weight:600; }
+  .qrow .tag.tobacco { background:rgba(245,127,23,.12); color:var(--brand-orange); }
+  .qrow .tag.high { background:rgba(231,76,60,.10); color:var(--status-error); }
+  .qrow .tag.flag { background:rgba(231,76,60,.10); color:var(--status-error); }
+  .qrow .tag.normal { background:var(--gray-100); color:var(--gray-700); }
+  .qrow .tag.priority { background:rgba(0,184,148,.10); color:var(--success); }
+  .qrow .urg { width:3px; align-self:stretch; border-radius:2px; background:var(--gray-300); margin-right:-4px; flex-shrink:0; }
+  .qrow .urg.high { background:var(--status-error); }
+  .qrow .urg.med { background:var(--brand-orange); }
+
+  /* Detail pane */
+  .qdetail { padding:24px; overflow-y:auto; }
+  .det-head { display:flex; gap:18px; align-items:flex-start; padding-bottom:18px; border-bottom:1px solid var(--gray-200); margin-bottom:20px; }
+  .det-head .av { width:56px; height:56px; border-radius:10px; background:var(--brand-blue); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:18px; flex-shrink:0; }
+  .det-head .name { font-size:20px; font-weight:700; letter-spacing:-0.01em; margin:0; }
+  .det-head .biz { font-size:13px; color:var(--gray-500); margin-top:3px; display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+  .det-head .biz .mono { font-family:var(--font-mono); font-size:11px; }
+  .det-head .right { display:flex; gap:8px; align-items:flex-start; margin-left:auto; }
+
+  .det-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:20px; }
+  .det-card { background:#fff; border:1px solid var(--gray-200); border-radius:10px; padding:16px; }
+  .det-card .lbl { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--gray-500); margin-bottom:6px; display:flex; align-items:center; gap:6px; }
+  .det-card .val { font-size:14px; font-weight:600; }
+  .det-card .val.mono { font-family:var(--font-mono); font-size:13px; }
+  .det-card .meta { font-size:11px; color:var(--gray-500); margin-top:4px; line-height:1.4; }
+  .det-card.ok { border-color:rgba(0,184,148,.4); background:rgba(0,184,148,.04); }
+  .det-card.warn { border-color:rgba(245,127,23,.4); background:rgba(245,127,23,.04); }
+  .det-card.err { border-color:rgba(231,76,60,.4); background:rgba(231,76,60,.04); }
+
+  .det-card .check-row { display:flex; gap:6px; align-items:center; font-size:12px; margin-top:8px; }
+  .det-card .check-row.ok { color:var(--success); }
+  .det-card .check-row.warn { color:var(--brand-orange); }
+  .det-card .check-row.err { color:var(--status-error); }
+  .det-card .check-row svg { width:13px; height:13px; }
+
+  /* doc card */
+  .doc-card { background:#fff; border:1px solid var(--gray-200); border-radius:10px; padding:14px 16px; display:flex; gap:12px; align-items:center; margin-bottom:8px; }
+  .doc-card .ic { width:38px; height:46px; background:var(--gray-100); border-radius:6px; display:flex; align-items:center; justify-content:center; color:var(--gray-500); font-family:var(--font-mono); font-size:9px; font-weight:700; flex-shrink:0; position:relative; }
+  .doc-card .ic.pdf { background:rgba(231,76,60,.10); color:var(--status-error); }
+  .doc-card .ic.img { background:rgba(30,77,140,.08); color:var(--brand-blue); }
+  .doc-card .body { flex:1; min-width:0; }
+  .doc-card .name { font-size:13px; font-weight:600; }
+  .doc-card .meta { font-size:11px; color:var(--gray-500); margin-top:2px; }
+  .doc-card .actions { display:flex; gap:6px; }
+  .doc-card .actions button { background:none; border:1px solid var(--gray-200); padding:5px 9px; border-radius:6px; font-size:11px; color:var(--gray-700); cursor:pointer; display:inline-flex; align-items:center; gap:4px; }
+  .doc-card .actions button:hover { background:var(--gray-50); }
+  .doc-card .actions button.danger { color:var(--status-error); border-color:rgba(231,76,60,.3); }
+  .doc-card .actions button.ok { color:var(--success); border-color:rgba(0,184,148,.3); }
+
+  .section-h { display:flex; align-items:center; gap:8px; margin:18px 0 10px; }
+  .section-h h3 { margin:0; font-size:13px; font-weight:600; }
+  .section-h .cnt { font-size:11px; color:var(--gray-500); font-family:var(--font-mono); }
+
+  /* footer action bar */
+  .det-foot { background:#fff; border-top:1px solid var(--gray-200); padding:14px 24px; display:flex; gap:8px; align-items:center; position:sticky; bottom:0; }
+  .det-foot .left { font-size:12px; color:var(--gray-500); }
+  .det-foot .right { margin-left:auto; display:flex; gap:8px; }
+
+  /* timeline */
+  .tl { padding:0; margin:0; list-style:none; position:relative; padding-left:18px; }
+  .tl::before { content:""; position:absolute; left:5px; top:6px; bottom:6px; width:2px; background:var(--gray-200); }
+  .tl li { position:relative; padding:0 0 14px; font-size:12px; }
+  .tl li::before { content:""; position:absolute; left:-17px; top:5px; width:8px; height:8px; border-radius:50%; background:var(--gray-300); border:2px solid #fff; }
+  .tl li.now::before { background:var(--brand-blue); }
+  .tl li .when { font-family:var(--font-mono); font-size:10px; color:var(--gray-500); }
+  .tl li .what { color:var(--dark); margin-top:1px; }
+  .tl li .who { color:var(--gray-500); font-size:11px; margin-top:2px; }
+
+  .modal-overlay { position:absolute; inset:0; background:rgba(15,23,42,0.45); display:flex; align-items:center; justify-content:center; z-index:50; }
+  .modal { background:#fff; border-radius:12px; width:480px; max-width:90%; box-shadow:0 24px 48px rgba(0,0,0,.18); overflow:hidden; }
+  .modal-head { padding:18px 20px; border-bottom:1px solid var(--gray-200); display:flex; align-items:center; gap:10px; }
+  .modal-head h3 { margin:0; font-size:16px; font-weight:600; flex:1; }
+  .modal-body { padding:20px; }
+  .modal-body .field { margin-bottom:14px; }
+  .modal-body label { display:block; font-size:12px; font-weight:600; margin-bottom:6px; }
+  .modal-body select, .modal-body textarea, .modal-body input { width:100%; padding:9px 12px; border:1px solid var(--border-3); border-radius:8px; font-family:inherit; font-size:13px; }
+  .modal-body textarea { min-height:80px; resize:vertical; }
+  .modal-foot { padding:14px 20px; border-top:1px solid var(--gray-200); display:flex; gap:8px; justify-content:flex-end; background:var(--gray-50); }
+
+  .reason-pills { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+  .reason-pill { font-size:11px; padding:5px 10px; border:1px solid var(--gray-200); border-radius:9999px; background:#fff; cursor:pointer; }
+  .reason-pill.on { background:rgba(231,76,60,.06); border-color:rgba(231,76,60,.4); color:var(--status-error); font-weight:500; }
+
+  /* fraud signals */
+  .signals { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .signal { display:flex; gap:10px; padding:10px 12px; border-radius:8px; font-size:12px; align-items:center; }
+  .signal.ok { background:rgba(0,184,148,.06); color:var(--success); }
+  .signal.warn { background:rgba(245,127,23,.08); color:var(--brand-orange); }
+  .signal.err { background:rgba(231,76,60,.08); color:var(--status-error); }
+  .signal svg { width:14px; height:14px; flex-shrink:0; }
+  .signal .lbl { flex:1; color:var(--dark); }
+  .signal.warn .lbl, .signal.err .lbl { color:var(--dark); }
+  .signal .val { font-family:var(--font-mono); font-size:11px; font-weight:600; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+<header style="margin-bottom:32px">
+  <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--gray-500);margin-bottom:6px">Internal · Trust & Safety admin</div>
+  <h1 style="margin:0;font-size:28px;font-weight:700;letter-spacing:-0.01em">Buyer verification queue</h1>
+  <div style="margin-top:6px;font-size:14px;color:var(--gray-500);max-width:680px;line-height:1.5">Where T&amp;S agents review submitted resale certs, EINs, and tobacco licenses. 3 states.</div>
+</header>
+
+<div class="states">
+
+<!-- 1. Default queue + selection -->
+<section data-screen-label="01 Queue">
+<div class="state-label"><span class="num">01</span><span class="ttl">Queue · reviewing tobacco license</span><span class="meta">Two-pane: list + detail</span></div>
+<div class="frame">
+  <div class="frame-head"><span class="tl"></span><span class="tl"></span><span class="tl"></span><span class="crumb">Internal admin / <span class="here">Verification queue</span></span></div>
+  <div class="admin-shell">
+    <aside class="admin-side">
+      <div class="br"><div class="sq"><i data-lucide="shield" style="width:13px;height:13px;color:#fff"></i></div>T&amp;S Console</div>
+      <div class="grp">Queues</div>
+      <a href="#" class="active"><i data-lucide="user-check"></i>Buyer verifications<span class="badge">12</span></a>
+      <a href="#"><i data-lucide="store"></i>Seller onboarding<span class="badge" style="background:var(--gray-700)">3</span></a>
+      <a href="#"><i data-lucide="flag"></i>Disputes</a>
+      <a href="#"><i data-lucide="alert-triangle"></i>Risk reviews</a>
+      <div class="grp">Tools</div>
+      <a href="#"><i data-lucide="search"></i>Lookup</a>
+      <a href="#"><i data-lucide="bar-chart-3"></i>Metrics</a>
+      <a href="#"><i data-lucide="history"></i>Audit log</a>
+    </aside>
+    <div class="admin-main">
+      <div class="admin-top">
+        <span class="back"><i data-lucide="arrow-left" style="width:13px;height:13px"></i>Console</span>
+        <span style="color:var(--gray-300)">·</span>
+        <span class="ttl">Buyer verifications</span>
+        <div class="pills">
+          <span class="pill warn">12 awaiting</span>
+          <span class="pill">avg. 3h 12m</span>
+          <span class="pill">SLA 4h</span>
+        </div>
+      </div>
+
+      <div class="qtabs">
+        <div class="tab active"><i data-lucide="inbox" style="width:13px;height:13px"></i>Pending<span class="cnt">12</span></div>
+        <div class="tab"><i data-lucide="clock" style="width:13px;height:13px"></i>Awaiting buyer<span class="cnt">5</span></div>
+        <div class="tab"><i data-lucide="check-circle" style="width:13px;height:13px"></i>Approved today<span class="cnt">28</span></div>
+        <div class="tab"><i data-lucide="x-circle" style="width:13px;height:13px"></i>Rejected<span class="cnt">3</span></div>
+        <div class="tab" style="margin-left:auto"><i data-lucide="user" style="width:13px;height:13px"></i>Mine<span class="cnt">2</span></div>
+      </div>
+
+      <div class="qtools">
+        <div class="filter active"><i data-lucide="filter"></i>Tobacco license</div>
+        <div class="filter"><i data-lucide="map-pin"></i>State: All</div>
+        <div class="filter"><i data-lucide="alert-circle"></i>Risk: All</div>
+        <div class="search">
+          <i data-lucide="search"></i>
+          <input placeholder="Search business, EIN, agent…" />
+        </div>
+        <div class="right"><span>Sort: <strong style="color:var(--dark)">Oldest</strong></span><i data-lucide="chevron-down" style="width:13px;height:13px;color:var(--gray-400)"></i></div>
+      </div>
+
+      <div class="qbody">
+        <div class="qlist">
+          <div class="qrow selected">
+            <div class="urg high"></div>
+            <div class="av" style="background:var(--brand-blue);color:#fff">CT</div>
+            <div class="body">
+              <div class="top"><div class="name">Cleveland Tobacco Co.</div><div class="age">3h 47m</div></div>
+              <div class="biz">Maya Reyes · Cleveland, OH</div>
+              <div class="tags"><span class="tag tobacco">TOBACCO</span><span class="tag flag">SLA RISK</span></div>
+            </div>
+          </div>
+          <div class="qrow">
+            <div class="urg med"></div>
+            <div class="av" style="background:#7C3AED;color:#fff">BS</div>
+            <div class="body">
+              <div class="top"><div class="name">Buckeye Smoke Distributors</div><div class="age">2h 14m</div></div>
+              <div class="biz">Jordan Patel · Akron, OH</div>
+              <div class="tags"><span class="tag tobacco">TOBACCO</span><span class="tag normal">RESALE</span></div>
+            </div>
+          </div>
+          <div class="qrow">
+            <div class="urg"></div>
+            <div class="av" style="background:#0891B2;color:#fff">VC</div>
+            <div class="body">
+              <div class="top"><div class="name">Vape Central LLC</div><div class="age">1h 52m</div></div>
+              <div class="biz">Sam Chen · Columbus, OH</div>
+              <div class="tags"><span class="tag tobacco">TOBACCO</span><span class="tag normal">EIN</span></div>
+            </div>
+          </div>
+          <div class="qrow">
+            <div class="urg"></div>
+            <div class="av" style="background:#DC2626;color:#fff">RH</div>
+            <div class="body">
+              <div class="top"><div class="name">River Hookah Co.</div><div class="age">1h 03m</div></div>
+              <div class="biz">Ali Hassan · Toledo, OH</div>
+              <div class="tags"><span class="tag tobacco">TOBACCO</span><span class="tag high">RESUBMIT</span></div>
+            </div>
+          </div>
+          <div class="qrow">
+            <div class="urg"></div>
+            <div class="av" style="background:var(--success);color:#fff">SS</div>
+            <div class="body">
+              <div class="top"><div class="name">SmokeStack Distribution</div><div class="age">42m</div></div>
+              <div class="biz">Riley Kim · Cincinnati, OH</div>
+              <div class="tags"><span class="tag priority">VIP REF</span><span class="tag tobacco">TOBACCO</span></div>
+            </div>
+          </div>
+          <div class="qrow">
+            <div class="urg"></div>
+            <div class="av" style="background:#7C2D12;color:#fff">PV</div>
+            <div class="body">
+              <div class="top"><div class="name">Pine Valley Vapes</div><div class="age">28m</div></div>
+              <div class="biz">Casey Brooks · Dayton, OH</div>
+              <div class="tags"><span class="tag normal">RESALE</span><span class="tag normal">EIN</span></div>
+            </div>
+          </div>
+          <div class="qrow">
+            <div class="urg"></div>
+            <div class="av">+6</div>
+            <div class="body" style="display:flex;align-items:center;height:36px;color:var(--gray-500);font-size:12px">6 more pending applications…</div>
+          </div>
+        </div>
+
+        <div class="qdetail">
+          <div class="det-head">
+            <div class="av">CT</div>
+            <div style="flex:1">
+              <h2 class="name">Cleveland Tobacco Co.</h2>
+              <div class="biz">
+                <span><i data-lucide="user" style="width:12px;height:12px;display:inline;vertical-align:-1px"></i> Maya Reyes</span>
+                <span class="mono">EIN 34-1827645</span>
+                <span><i data-lucide="map-pin" style="width:12px;height:12px;display:inline;vertical-align:-1px"></i> Cleveland, OH</span>
+                <span><i data-lucide="phone" style="width:12px;height:12px;display:inline;vertical-align:-1px"></i> (216) 555-0182</span>
+              </div>
+              <div style="margin-top:6px;display:flex;gap:6px"><span class="badge badge-warning">3h 47m old · SLA risk</span><span class="badge" style="background:rgba(245,127,23,.10);color:var(--brand-orange);font-size:10px;font-weight:600;padding:2px 8px;border-radius:9999px">TOBACCO LICENSE</span></div>
+            </div>
+            <div class="right">
+              <button class="btn btn-secondary btn-sm" style="height:32px"><i data-lucide="message-circle" style="width:13px;height:13px"></i>Message buyer</button>
+              <button class="btn btn-secondary btn-sm" style="height:32px"><i data-lucide="more-horizontal" style="width:13px;height:13px"></i></button>
+            </div>
+          </div>
+
+          <!-- Fraud signals -->
+          <div class="section-h"><h3>Automated checks</h3><span class="cnt">7 of 8 passed</span></div>
+          <div class="signals">
+            <div class="signal ok"><i data-lucide="check-circle"></i><span class="lbl">EIN matches IRS records</span><span class="val">34-1827645</span></div>
+            <div class="signal ok"><i data-lucide="check-circle"></i><span class="lbl">Resale cert on Ohio DOT registry</span><span class="val">VALID</span></div>
+            <div class="signal ok"><i data-lucide="check-circle"></i><span class="lbl">Business address verified</span><span class="val">USPS</span></div>
+            <div class="signal ok"><i data-lucide="check-circle"></i><span class="lbl">Domain age &gt; 2 years</span><span class="val">7y</span></div>
+            <div class="signal warn"><i data-lucide="alert-triangle"></i><span class="lbl">Tobacco license needs OCR review</span><span class="val">MANUAL</span></div>
+            <div class="signal ok"><i data-lucide="check-circle"></i><span class="lbl">Phone number verified</span><span class="val">SMS OK</span></div>
+            <div class="signal ok"><i data-lucide="check-circle"></i><span class="lbl">No prior bans on operator</span><span class="val">CLEAN</span></div>
+            <div class="signal ok"><i data-lucide="check-circle"></i><span class="lbl">Email domain not disposable</span><span class="val">CORP</span></div>
+          </div>
+
+          <!-- Documents -->
+          <div class="section-h"><h3>Submitted documents</h3><span class="cnt">3 files · 4.2 MB</span></div>
+          <div class="doc-card">
+            <div class="ic pdf">PDF</div>
+            <div class="body">
+              <div class="name">Resale_Cert_OH_2024.pdf</div>
+              <div class="meta">1.2 MB · Ohio DOT-issued · Exp. <span style="font-family:var(--font-mono)">2026-12-31</span> · Auto-verified</div>
+            </div>
+            <div class="actions">
+              <button class="ok"><i data-lucide="check" style="width:12px;height:12px"></i>OK</button>
+              <button><i data-lucide="eye" style="width:12px;height:12px"></i>Preview</button>
+            </div>
+          </div>
+          <div class="doc-card" style="border-color:rgba(245,127,23,.4);background:rgba(245,127,23,.03)">
+            <div class="ic img">JPG</div>
+            <div class="body">
+              <div class="name">Tobacco_license.jpg <span style="margin-left:5px;font-size:10px;color:var(--brand-orange);font-weight:700">⚠ NEEDS REVIEW</span></div>
+              <div class="meta">2.1 MB · Photo · OCR confidence <span style="font-family:var(--font-mono)">71%</span> · License# OH-T-2024-44829 · Exp. 2025-06-30</div>
+            </div>
+            <div class="actions">
+              <button><i data-lucide="zoom-in" style="width:12px;height:12px"></i>Inspect</button>
+              <button class="ok"><i data-lucide="check" style="width:12px;height:12px"></i>Mark OK</button>
+            </div>
+          </div>
+          <div class="doc-card">
+            <div class="ic pdf">PDF</div>
+            <div class="body">
+              <div class="name">EIN_Letter_147C.pdf</div>
+              <div class="meta">0.9 MB · IRS Form 147C · EIN matches application · Auto-verified</div>
+            </div>
+            <div class="actions">
+              <button class="ok"><i data-lucide="check" style="width:12px;height:12px"></i>OK</button>
+              <button><i data-lucide="eye" style="width:12px;height:12px"></i>Preview</button>
+            </div>
+          </div>
+
+          <!-- Side-by-side details -->
+          <div class="det-grid" style="margin-top:18px">
+            <div class="det-card">
+              <div class="lbl"><i data-lucide="building" style="width:11px;height:11px"></i>Business address</div>
+              <div class="val">Cleveland Tobacco Co.</div>
+              <div class="meta">2841 W 25th St, Cleveland OH 44113<br>Verified · matches DOT registry</div>
+            </div>
+            <div class="det-card">
+              <div class="lbl"><i data-lucide="truck" style="width:11px;height:11px"></i>Ship-to addresses</div>
+              <div class="val">3 locations</div>
+              <div class="meta">2 retail storefronts + 1 warehouse · all in OH</div>
+            </div>
+            <div class="det-card">
+              <div class="lbl"><i data-lucide="credit-card" style="width:11px;height:11px"></i>Requested terms</div>
+              <div class="val">Net-30, $25k limit</div>
+              <div class="meta">Bank verified via Plaid · D&amp;B score 78 (good)</div>
+            </div>
+            <div class="det-card">
+              <div class="lbl"><i data-lucide="users" style="width:11px;height:11px"></i>Referrals</div>
+              <div class="val">2 sellers vouch</div>
+              <div class="meta">Buckeye Wholesale (3 years), Lake Erie Distributors (1 year)</div>
+            </div>
+          </div>
+
+          <!-- Timeline -->
+          <div class="section-h"><h3>Activity</h3></div>
+          <ul class="tl">
+            <li class="now"><div class="when">Now</div><div class="what"><strong>You</strong> opened this application</div><div class="who">agent.kowalski</div></li>
+            <li><div class="when">3h 47m ago</div><div class="what">Application submitted with 3 documents</div><div class="who">Maya Reyes · IP 76.x.x.142 (Cleveland)</div></li>
+            <li><div class="when">3h 47m ago</div><div class="what">Auto-checks ran: 7/8 passed, OCR flagged tobacco license for manual review</div><div class="who">system</div></li>
+            <li><div class="when">2 days ago</div><div class="what">Email verified</div><div class="who">Maya Reyes</div></li>
+            <li><div class="when">2 days ago</div><div class="what">Account created</div><div class="who">Maya Reyes</div></li>
+          </ul>
+
+        </div>
+      </div>
+
+      <div class="det-foot">
+        <div class="left">Reviewing as <strong style="color:var(--dark)">agent.kowalski</strong> · 14 reviewed today (avg. 4m 12s each)</div>
+        <div class="right">
+          <button class="btn btn-secondary btn-sm" style="height:36px"><i data-lucide="message-square" style="width:13px;height:13px"></i>Request resubmit</button>
+          <button class="btn btn-destructive btn-sm" style="height:36px"><i data-lucide="x" style="width:13px;height:13px"></i>Reject</button>
+          <button class="btn btn-primary btn-sm" style="height:36px;background:var(--success)"><i data-lucide="check" style="width:13px;height:13px"></i>Approve & notify</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- 2. Reject modal -->
+<section data-screen-label="02 Reject modal">
+<div class="state-label"><span class="num">02</span><span class="ttl">Rejection · reason picker</span><span class="meta">Templated reasons + custom note</span></div>
+<div class="frame" style="position:relative">
+  <div class="frame-head"><span class="tl"></span><span class="tl"></span><span class="tl"></span><span class="crumb">Internal admin / Verification queue / <span class="here">Cleveland Tobacco Co.</span></span></div>
+  <div style="position:relative;background:#FAFBFD;padding:0;height:560px">
+    <!-- blurred background hint -->
+    <div style="filter:blur(2px);opacity:.6;height:100%;background:repeating-linear-gradient(0deg, transparent 0 80px, rgba(0,0,0,.02) 80px 81px);padding:40px"></div>
+
+    <div class="modal-overlay">
+      <div class="modal">
+        <div class="modal-head">
+          <div style="width:32px;height:32px;border-radius:8px;background:rgba(231,76,60,.10);color:var(--status-error);display:flex;align-items:center;justify-content:center"><i data-lucide="alert-octagon" style="width:18px;height:18px"></i></div>
+          <h3>Reject application</h3>
+          <button style="background:none;border:0;color:var(--gray-400);cursor:pointer"><i data-lucide="x" style="width:18px;height:18px"></i></button>
+        </div>
+        <div class="modal-body">
+          <div style="font-size:13px;color:var(--gray-700);margin-bottom:14px;line-height:1.5">Maya at <strong>Cleveland Tobacco Co.</strong> will receive an email with your reason and instructions to resubmit. They cannot place orders until re-approved.</div>
+
+          <div class="field">
+            <label>Reason</label>
+            <div class="reason-pills">
+              <span class="reason-pill on">Tobacco license illegible</span>
+              <span class="reason-pill">EIN mismatch</span>
+              <span class="reason-pill">Resale cert expired</span>
+              <span class="reason-pill">Business not registered</span>
+              <span class="reason-pill">Suspected fraud</span>
+              <span class="reason-pill">Insufficient documentation</span>
+              <span class="reason-pill">Other</span>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>Severity</label>
+            <select>
+              <option>Soft — buyer can resubmit immediately</option>
+              <option>Hard — buyer must contact support to retry</option>
+              <option>Permanent ban (requires manager sign-off)</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>Note to buyer (visible in their email)</label>
+            <textarea>The tobacco license photo you uploaded is too blurry — we can't read the license number or expiration date. Please re-shoot it in good lighting, on a flat surface, with no glare. PDF scans also work great.
+
+Once you re-upload, we'll review again within 4 business hours.
+
+— Trust & Safety, WholesaleHub</textarea>
+          </div>
+
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--gray-700);margin-top:6px">
+            <input type="checkbox" checked /> Send me a notification if they resubmit (so I can pick it up)
+          </label>
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-secondary btn-sm" style="height:34px">Cancel</button>
+          <button class="btn btn-destructive btn-sm" style="height:34px"><i data-lucide="send" style="width:13px;height:13px"></i>Reject &amp; email buyer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- 3. Approved confirmation -->
+<section data-screen-label="03 Approved">
+<div class="state-label"><span class="num">03</span><span class="ttl">Approved · next-up loaded</span><span class="meta">Inline confirmation + auto-advance</span></div>
+<div class="frame">
+  <div class="frame-head"><span class="tl"></span><span class="tl"></span><span class="tl"></span><span class="crumb">Internal admin / <span class="here">Verification queue</span></span></div>
+  <div style="background:#FAFBFD;padding:24px">
+    <div style="background:#fff;border:1px solid rgba(0,184,148,.4);border-radius:14px;padding:20px;display:flex;gap:16px;align-items:center;margin-bottom:16px;box-shadow:var(--shadow-sm)">
+      <div style="width:44px;height:44px;border-radius:50%;background:var(--success);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0"><i data-lucide="check" style="width:22px;height:22px"></i></div>
+      <div style="flex:1">
+        <div style="font-size:15px;font-weight:600;letter-spacing:-0.01em">Cleveland Tobacco Co. approved</div>
+        <div style="font-size:13px;color:var(--gray-500);margin-top:3px">Net-30 with $25,000 limit · Maya Reyes notified by email · 4m 12s review time</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary btn-sm" style="height:32px"><i data-lucide="rotate-ccw" style="width:13px;height:13px"></i>Undo</button>
+        <button class="btn btn-secondary btn-sm" style="height:32px"><i data-lucide="external-link" style="width:13px;height:13px"></i>View buyer profile</button>
+      </div>
+    </div>
+
+    <div style="background:#fff;border:1px solid var(--gray-200);border-radius:12px;overflow:hidden">
+      <div style="padding:14px 18px;background:rgba(30,77,140,.04);border-bottom:1px solid var(--gray-200);display:flex;align-items:center;gap:10px">
+        <i data-lucide="arrow-right" style="width:14px;height:14px;color:var(--brand-blue)"></i>
+        <div style="font-size:13px;font-weight:600">Next up · Buckeye Smoke Distributors</div>
+        <span class="badge badge-warning" style="margin-left:auto">2h 14m old</span>
+      </div>
+      <div style="padding:18px">
+        <div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:14px">
+          <div style="width:48px;height:48px;border-radius:10px;background:#7C3AED;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700">BS</div>
+          <div style="flex:1">
+            <div style="font-size:16px;font-weight:600">Buckeye Smoke Distributors</div>
+            <div style="font-size:12px;color:var(--gray-500);margin-top:2px">Jordan Patel · Akron, OH · EIN <span style="font-family:var(--font-mono)">82-3456789</span></div>
+          </div>
+          <div style="display:flex;gap:6px">
+            <span class="badge" style="background:rgba(245,127,23,.10);color:var(--brand-orange);font-size:10px;font-weight:600;padding:2px 8px;border-radius:9999px">TOBACCO</span>
+            <span class="badge" style="background:var(--gray-100);color:var(--gray-700);font-size:10px;font-weight:600;padding:2px 8px;border-radius:9999px">RESALE</span>
+          </div>
+        </div>
+
+        <div class="signals" style="margin-bottom:14px">
+          <div class="signal ok"><i data-lucide="check-circle"></i><span class="lbl">All 8 auto-checks passed</span><span class="val">CLEAN</span></div>
+          <div class="signal ok"><i data-lucide="check-circle"></i><span class="lbl">OCR confidence high</span><span class="val">96%</span></div>
+        </div>
+
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary btn-sm" style="height:36px;background:var(--success)"><i data-lucide="check" style="width:13px;height:13px"></i>Quick approve</button>
+          <button class="btn btn-secondary btn-sm" style="height:36px"><i data-lucide="eye" style="width:13px;height:13px"></i>Open full review</button>
+          <button class="btn btn-secondary btn-sm" style="height:36px"><i data-lucide="skip-forward" style="width:13px;height:13px"></i>Skip</button>
+          <div style="margin-left:auto;font-size:12px;color:var(--gray-500)">11 more in queue · ETA 47m</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;display:flex;gap:14px">
+      <div style="flex:1;background:#fff;border:1px solid var(--gray-200);border-radius:10px;padding:14px 16px">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--gray-500);font-weight:600">Your hour</div>
+        <div style="font-size:22px;font-weight:700;font-family:var(--font-mono);margin-top:4px">14<span style="color:var(--gray-400);font-size:14px;font-weight:500"> reviewed</span></div>
+        <div style="font-size:11px;color:var(--success);margin-top:2px">↑ 3 ahead of pace</div>
+      </div>
+      <div style="flex:1;background:#fff;border:1px solid var(--gray-200);border-radius:10px;padding:14px 16px">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--gray-500);font-weight:600">Approval rate</div>
+        <div style="font-size:22px;font-weight:700;font-family:var(--font-mono);margin-top:4px">78%</div>
+        <div style="font-size:11px;color:var(--gray-500);margin-top:2px">vs. team avg 74%</div>
+      </div>
+      <div style="flex:1;background:#fff;border:1px solid var(--gray-200);border-radius:10px;padding:14px 16px">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--gray-500);font-weight:600">Avg. time</div>
+        <div style="font-size:22px;font-weight:700;font-family:var(--font-mono);margin-top:4px">4m 12s</div>
+        <div style="font-size:11px;color:var(--gray-500);margin-top:2px">Target ≤ 5m</div>
+      </div>
+      <div style="flex:1;background:#fff;border:1px solid var(--gray-200);border-radius:10px;padding:14px 16px">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--gray-500);font-weight:600">SLA risk</div>
+        <div style="font-size:22px;font-weight:700;font-family:var(--font-mono);margin-top:4px;color:var(--brand-orange)">2</div>
+        <div style="font-size:11px;color:var(--brand-orange);margin-top:2px">apps &gt; 3h old</div>
+      </div>
+    </div>
+  </div>
+</div>
+</section>
+
+</div>
+</div>
+<script>if (window.lucide) lucide.createIcons();</script>
+</body>
+</html>

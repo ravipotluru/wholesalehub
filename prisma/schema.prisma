@@ -160,22 +160,25 @@ enum PricingVisibility {
 // ─── MODELS ───
 
 model User {
-  id               String     @id @default(cuid())
-  email            String     @unique
-  passwordHash     String
-  role             UserRole   @default(RETAILER)
-  status           UserStatus @default(ACTIVE)
-  firstName        String
-  lastName         String
-  phone            String?
-  retailerId       String?
-  wholesalerId     String?
-  ageVerified      Boolean    @default(false)
-  lastLoginAt      DateTime?
-  failedLoginCount Int        @default(0)
-  lockedUntil      DateTime?
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
+  id                      String     @id @default(cuid())
+  email                   String     @unique
+  passwordHash            String
+  role                    UserRole   @default(RETAILER)
+  status                  UserStatus @default(ACTIVE)
+  firstName               String
+  lastName                String
+  phone                   String?
+  retailerId              String?
+  wholesalerId            String?
+  ageVerified             Boolean    @default(false)
+  lastLoginAt             DateTime?
+  failedLoginCount        Int        @default(0)
+  lockedUntil             DateTime?
+  /// JSON column holding the user's per-category, per-channel notification preferences.
+  /// Shape + defaults validated at the API boundary in src/lib/notification-prefs.ts.
+  notificationPreferences Json?
+  createdAt               DateTime   @default(now())
+  updatedAt               DateTime   @updatedAt
 
   retailer      Retailer?      @relation(fields: [retailerId], references: [id])
   wholesaler    Wholesaler?    @relation(fields: [wholesalerId], references: [id])

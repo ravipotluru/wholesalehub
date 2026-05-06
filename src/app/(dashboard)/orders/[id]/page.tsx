@@ -16,6 +16,7 @@ import {
   FileText,
   XCircle,
   Send,
+  RotateCcw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
@@ -155,6 +156,45 @@ export default function OrderDetailPage() {
     }
   };
 
+  /**
+   * Reorder: clones every line of this order back into the buyer's cart at
+   * each line's original wholesaler. The endpoint exists since PR #5 — we
+   * just didn't have a UI surface for it. On success we navigate the buyer
+   * straight to /cart so they can adjust quantities and check out.
+   */
+  const [reordering, setReordering] = useState(false);
+  const handleReorder = async () => {
+    setReordering(true);
+    try {
+      const res = await fetch(`/api/orders/${orderId}/reorder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } | string };
+        const msg =
+          typeof body.error === 'string'
+            ? body.error
+            : body.error?.message ?? 'Reorder failed.';
+        throw new Error(msg);
+      }
+      const body = (await res.json()) as { addedLines?: number; skippedLines?: number };
+      const added = body.addedLines ?? order?.lines.length ?? 0;
+      const skipped = body.skippedLines ?? 0;
+      toast.success(
+        skipped > 0
+          ? `Added ${added} item${added === 1 ? '' : 's'} to cart (${skipped} skipped — out of stock or delisted).`
+          : `Added ${added} item${added === 1 ? '' : 's'} to cart.`,
+      );
+      queryClient.invalidateQueries({ queryKey: ['cart'] });
+      router.push('/cart');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Reorder failed.');
+    } finally {
+      setReordering(false);
+    }
+  };
+
   // Loading state
   if (isLoading) {
     return (
@@ -229,6 +269,20 @@ export default function OrderDetailPage() {
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2">
+          {/* Reorder: retailer only, on any non-PENDING order. Faire-style
+              one-tap reorder — clones lines into cart, navigates to /cart. */}
+          {isRetailer && order.orderStatus !== 'PENDING' && order.lines.length > 0 && (
+            <Button
+              variant="secondary"
+              size="sm"
+              isLoading={reordering}
+              onClick={handleReorder}
+              leftIcon={<RotateCcw className="h-4 w-4" />}
+            >
+              Reorder
+            </Button>
+          )}
+
           {/* Cancel: only when PENDING, available to retailer */}
           {order.orderStatus === 'PENDING' && (isRetailer || isWholesaler) && (
             <Button

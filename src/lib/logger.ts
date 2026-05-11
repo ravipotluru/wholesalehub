@@ -31,6 +31,11 @@ const REDACT_PATHS = [
   '*.secret',
   'webhookSecret',
   '*.webhookSecret',
+  // Stripe — Stripe.js client_secret is not catastrophic but not for logs
+  'clientSecret',
+  '*.clientSecret',
+  'stripeSecretKey',
+  '*.stripeSecretKey',
   // Personal data — emails masked, phone redacted
   'phone',
   '*.phone',

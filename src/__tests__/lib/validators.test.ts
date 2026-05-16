@@ -12,6 +12,8 @@ import {
   productSearchSchema,
   barcodeScanSchema,
   orderStatusUpdateSchema,
+  createRetailerLocationSchema,
+  updateRetailerLocationSchema,
 } from '@/lib/validators';
 
 // ─── loginSchema ───
@@ -282,16 +284,40 @@ describe('checkoutSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('should reject missing shippingAddress', () => {
+  it('should accept missing shippingAddress (validated route-side against shipToLocationId)', () => {
+    // The shipping fields are optional at the schema layer because the
+    // checkout route picks between shipToLocationId / saved locations /
+    // legacy address. The route enforces "at least one path is valid"
+    // — see retailer-locations tests.
     const { shippingAddress, ...rest } = validCheckout;
     const result = checkoutSchema.safeParse(rest);
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+  });
+
+  it('should accept a checkout with only shipToLocationId + paymentMethod', () => {
+    const result = checkoutSchema.safeParse({
+      shipToLocationId: 'loc_123',
+      paymentMethod: 'NET30',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.shipToLocationId).toBe('loc_123');
+      expect(result.data.shippingAddress).toBeUndefined();
+    }
   });
 
   it('should reject empty shippingCity', () => {
     const result = checkoutSchema.safeParse({
       ...validCheckout,
       shippingCity: '',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('should reject empty shipToLocationId', () => {
+    const result = checkoutSchema.safeParse({
+      ...validCheckout,
+      shipToLocationId: '',
     });
     expect(result.success).toBe(false);
   });
@@ -496,5 +522,104 @@ describe('orderStatusUpdateSchema', () => {
   it('should reject when status field is missing', () => {
     const result = orderStatusUpdateSchema.safeParse({});
     expect(result.success).toBe(false);
+  });
+});
+
+// ─── createRetailerLocationSchema ───
+
+describe('createRetailerLocationSchema', () => {
+  const validLocation = {
+    label: 'Main Store',
+    address: '123 Main St',
+    city: 'Austin',
+    state: 'TX',
+    zipCode: '78701',
+  };
+
+  it('should accept a minimal valid location', () => {
+    const result = createRetailerLocationSchema.safeParse(validLocation);
+    expect(result.success).toBe(true);
+  });
+
+  it('should accept all optional fields', () => {
+    const result = createRetailerLocationSchema.safeParse({
+      ...validLocation,
+      contactName: 'Janet',
+      contactPhone: '555-0100',
+      notes: 'Loading dock around back',
+      isDefault: true,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('should reject empty label', () => {
+    const result = createRetailerLocationSchema.safeParse({
+      ...validLocation,
+      label: '',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('should reject empty address', () => {
+    const result = createRetailerLocationSchema.safeParse({
+      ...validLocation,
+      address: '',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('should reject empty zipCode', () => {
+    const result = createRetailerLocationSchema.safeParse({
+      ...validLocation,
+      zipCode: '',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('should reject label exceeding 100 characters', () => {
+    const result = createRetailerLocationSchema.safeParse({
+      ...validLocation,
+      label: 'A'.repeat(101),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('should reject when address is missing', () => {
+    const { address, ...rest } = validLocation;
+    const result = createRetailerLocationSchema.safeParse(rest);
+    expect(result.success).toBe(false);
+  });
+});
+
+// ─── updateRetailerLocationSchema ───
+
+describe('updateRetailerLocationSchema', () => {
+  it('should accept a single-field update', () => {
+    const result = updateRetailerLocationSchema.safeParse({ label: 'New Name' });
+    expect(result.success).toBe(true);
+  });
+
+  it('should accept an isDefault flip on its own', () => {
+    const result = updateRetailerLocationSchema.safeParse({ isDefault: true });
+    expect(result.success).toBe(true);
+  });
+
+  it('should reject an empty body', () => {
+    const result = updateRetailerLocationSchema.safeParse({});
+    expect(result.success).toBe(false);
+  });
+
+  it('should reject empty string for label', () => {
+    const result = updateRetailerLocationSchema.safeParse({ label: '' });
+    expect(result.success).toBe(false);
+  });
+
+  it('should accept null for nullable optional fields', () => {
+    const result = updateRetailerLocationSchema.safeParse({
+      contactName: null,
+      contactPhone: null,
+      notes: null,
+    });
+    expect(result.success).toBe(true);
   });
 });

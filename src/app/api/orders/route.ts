@@ -12,6 +12,11 @@ import {
   storeIdempotentResponse,
 } from '@/lib/idempotency';
 import { selectUnitPrice } from '@/lib/pricing';
+import {
+  selectShipToLocation,
+  snapshotShipTo,
+  type ShipToSnapshot,
+} from '@/lib/retailer-locations';
 
 const TAX_RATE = new Prisma.Decimal('0.0825');
 const ZERO = new Prisma.Decimal(0);
@@ -137,7 +142,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { shippingAddress, shippingCity, shippingState, shippingZip, paymentMethod, orderNotes } = validation.data;
+    const {
+      shipToLocationId,
+      shippingAddress,
+      shippingCity,
+      shippingState,
+      shippingZip,
+      paymentMethod,
+      orderNotes,
+    } = validation.data;
 
     // ─── Idempotency replay ─────────────────────────────────────────────
     // If the client sends `Idempotency-Key`, replay any cached response
@@ -314,6 +327,55 @@ export async function POST(request: NextRequest) {
         },
       );
 
+      // ─── Ship-to resolution ──────────────────────────────────────────
+      // 1. If the body provided `shipToLocationId`, verify ownership +
+      //    isActive and snapshot that address.
+      // 2. Otherwise look at the retailer's active locations: the default
+      //    (or first by label, see `selectShipToLocation`) wins.
+      // 3. Retailers with zero locations fall back to the legacy
+      //    `shippingAddress` body fields — backward compat for buyers who
+      //    haven't filled in any RetailerLocation rows yet.
+      const activeLocations = await tx.retailerLocation.findMany({
+        where: { retailerId, isActive: true },
+      });
+
+      const shipToOutcome = selectShipToLocation(shipToLocationId, activeLocations);
+
+      if (shipToOutcome.kind === 'reject') {
+        return {
+          ok: false as const,
+          status: 400,
+          body: {
+            error:
+              'shipToLocationId does not match any active location for ' +
+              'this retailer. Pick one of your saved locations or omit ' +
+              'the field to use the default.',
+          },
+        };
+      }
+
+      let shipToSnapshot: ShipToSnapshot | null = null;
+      if (shipToOutcome.kind === 'use_location') {
+        shipToSnapshot = snapshotShipTo(shipToOutcome.location);
+      } else {
+        // `fallback` — retailer has zero locations, must supply legacy
+        // address fields. We require all four; partial addresses are not
+        // allowed (a missing state on a tobacco shipment is a real PACT
+        // problem).
+        if (!shippingAddress || !shippingCity || !shippingState || !shippingZip) {
+          return {
+            ok: false as const,
+            status: 400,
+            body: {
+              error:
+                'No saved ship-to locations on file. Provide ' +
+                'shippingAddress / shippingCity / shippingState / ' +
+                'shippingZip, or create a RetailerLocation first.',
+            },
+          };
+        }
+      }
+
       // ─── Credit limit enforcement ────────────────────────────────────
       // If the retailer has a creditLimit, sum (open AR + this checkout)
       // and reject when the proposed total would exceed it.
@@ -383,10 +445,16 @@ export async function POST(request: NextRequest) {
             taxAmount: s.totalTax,
             shippingAmount: s.shipping,
             totalAmount: s.total,
-            shipToAddress: shippingAddress,
-            shipToCity: shippingCity,
-            shipToState: shippingState,
-            shipToZip: shippingZip,
+            // Snapshot the location's address into shipTo* for historical
+            // accuracy AND set shipToLocationId for the relational link
+            // (so we can later answer "show me everything that shipped to
+            // store #4" without a string compare). When falling back to
+            // the legacy body fields, shipToLocationId stays null.
+            shipToLocationId: shipToSnapshot?.shipToLocationId,
+            shipToAddress: shipToSnapshot?.shipToAddress ?? shippingAddress,
+            shipToCity: shipToSnapshot?.shipToCity ?? shippingCity,
+            shipToState: shipToSnapshot?.shipToState ?? shippingState,
+            shipToZip: shipToSnapshot?.shipToZip ?? shippingZip,
             orderNotes,
             totalItems: s.items.length,
             totalUnits: s.items.reduce((sum, item) => sum + item.quantity, 0),

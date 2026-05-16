@@ -119,6 +119,54 @@ export const inventoryWebhookSchema = z.object({
   path: ['po_number'],
 });
 
+// ─── Buyer verification ─────────────────────────────────────────────────
+
+export const buyerDocumentTypeEnum = z.enum([
+  'RESALE_CERTIFICATE',
+  'EIN_LETTER',
+  'TOBACCO_LICENSE',
+  'STATE_BUSINESS_LICENSE',
+  'AGE_VERIFICATION',
+  'OTHER',
+]);
+
+/**
+ * Body shape for POST /api/buyer/documents. The actual file upload happens
+ * out-of-band (signed URL → S3/Vercel Blob); this endpoint records the
+ * resulting metadata. `storageUrl` is validated as a non-empty string —
+ * the storage layer enforces format. Filename is bounded to keep abusive
+ * payloads from filling the DB; size cap is 50 MB.
+ */
+export const buyerDocumentUploadSchema = z.object({
+  type: buyerDocumentTypeEnum,
+  fileName: z.string().min(1, 'fileName is required').max(255),
+  mimeType: z.string().min(1, 'mimeType is required').max(127),
+  fileSizeKb: z
+    .number()
+    .int('fileSizeKb must be an integer')
+    .positive('fileSizeKb must be positive')
+    .max(51200, 'File too large (max 50 MB)'),
+  storageUrl: z.string().min(1, 'storageUrl is required').max(2048),
+  notes: z.string().max(1000).optional(),
+});
+
+/**
+ * Body shape for PATCH /api/admin/verification/[retailerId]/documents/[id].
+ * `rejectReason` is required when action is REJECT (refine below).
+ */
+export const buyerDocumentReviewSchema = z
+  .object({
+    action: z.enum(['APPROVE', 'REJECT']),
+    rejectReason: z.string().min(1).max(1000).optional(),
+  })
+  .refine(
+    (data) => data.action !== 'REJECT' || (data.rejectReason && data.rejectReason.length > 0),
+    {
+      message: 'rejectReason is required when action is REJECT',
+      path: ['rejectReason'],
+    },
+  );
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type AddToCartInput = z.infer<typeof addToCartSchema>;
@@ -128,3 +176,5 @@ export type BarcodeScanInput = z.infer<typeof barcodeScanSchema>;
 export type OrderStatusUpdateInput = z.infer<typeof orderStatusUpdateSchema>;
 export type InventoryWebhookPayload = z.infer<typeof inventoryWebhookSchema>;
 export type StockStatus = z.infer<typeof stockStatusEnum>;
+export type BuyerDocumentUploadInput = z.infer<typeof buyerDocumentUploadSchema>;
+export type BuyerDocumentReviewInput = z.infer<typeof buyerDocumentReviewSchema>;

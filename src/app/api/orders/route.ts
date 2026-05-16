@@ -190,6 +190,53 @@ export async function POST(request: NextRequest) {
         return { ok: false as const, status: 400, body: { error: 'Cart is empty' } };
       }
 
+      // ─── Buyer-verification gate ──────────────────────────────────────
+      // Block checkout when ANY cart line points at an age-restricted
+      // product AND the retailer is not VERIFIED. This is the PACT Act /
+      // state-tobacco-license guardrail — the platform cannot fulfill an
+      // age-restricted order without first confirming the retailer holds
+      // the right paperwork.
+      //
+      // Non-age-restricted carts go through unblocked even when the
+      // retailer is UNVERIFIED, so a smoke shop can still buy gum / glass
+      // accessories before they finish onboarding.
+      //
+      // The route's existing `{ ok, status, body }` pattern returns the
+      // body directly via `NextResponse.json` after the transaction. We
+      // shape `body` to match the api-error envelope so the contract
+      // matches `apiError()` output everywhere a client might match on
+      // `error.code`.
+      const hasAgeRestrictedLine = cartItems.some(
+        (item) => item.product.ageRestricted === true,
+      );
+      if (hasAgeRestrictedLine) {
+        const retailerVerification = await tx.retailer.findUnique({
+          where: { id: retailerId },
+          select: { verificationStatus: true },
+        });
+        if (
+          !retailerVerification ||
+          retailerVerification.verificationStatus !== 'VERIFIED'
+        ) {
+          return {
+            ok: false as const,
+            status: 403,
+            body: {
+              error: {
+                code: 'BUYER_NOT_VERIFIED',
+                message:
+                  'Buyer verification is required before ordering age-restricted products.',
+                requiredAction: 'VERIFY_BUYER',
+                details: {
+                  currentStatus:
+                    retailerVerification?.verificationStatus ?? 'UNVERIFIED',
+                },
+              },
+            },
+          };
+        }
+      }
+
       // Group cart items by supplier
       const supplierGroups: Record<string, typeof cartItems> = {};
       for (const item of cartItems) {
@@ -428,6 +475,16 @@ export async function POST(request: NextRequest) {
     });
 
     if (!result.ok) {
+      // Surface the buyer-verification gate as its own log event so an
+      // ops dashboard can track how often retailers are bouncing here.
+      const errorBody = result.body as { error?: { code?: string } };
+      if (errorBody.error?.code === 'BUYER_NOT_VERIFIED') {
+        logger.warn({
+          event: 'order_blocked_buyer_unverified',
+          retailerId,
+          userId: user.id,
+        });
+      }
       return NextResponse.json(result.body, { status: result.status });
     }
 

@@ -118,28 +118,34 @@ UI is not yet wired: cart and product detail still show base+promo. Adding a `PR
 
 ## Roadmap — where this is going
 
-**Done (recent):**
+> **⚠ Implementation/verification state lives in `docs/STATUS.md` — read it before
+> assuming anything below is or isn't built.** STATUS.md is the per-feature ledger
+> (Built / Wired / Verified / Deployed gates, audit log, decision log) and is updated
+> in the same commit as the work it records. This section is the strategic summary only.
+
+**Done (recent — see STATUS.md for gates + commit hashes):**
 - ✅ Audit-driven security/correctness pass: IDOR fix, transactions, HMAC timing-safe, rate limits, Prisma indexes, CI hardening, type augmentation
-- ✅ Idempotency keys on orders POST
-- ✅ Credit-limit enforcement at checkout
-- ✅ PII redaction in logger
-- ✅ License-expiry watcher (script + scheduled GH Action)
-- ✅ Mobile-friendly ops-dispatch GH Action (run audit/tests/license-check/health-ping from phone)
-- ✅ Security headers (CSP, HSTS, frame-ancestors) in `next.config.js`
-- ✅ Tier-pricing schema + selection helper, wired into checkout
-- ✅ `PricingVisibility.PUBLIC|APPROVED_BUYERS_ONLY` on ProductPricing (filter wired in search; approval table is next)
+- ✅ Idempotency keys on orders POST · credit-limit enforcement · PII-redacted logging · security headers
+- ✅ Tier-pricing schema + selection helper wired into checkout; **tier-pricing editor UI** (`/products/[id]/pricing` + `PUT /tiers`)
+- ✅ **All 9 Claude Design P0 screens** scaffolded and merged (notifications, buyer verification, locations, CSV import UI, tier editor, scanner, admin queue, auth screens, design gallery)
+- ✅ **Buyer verification flow** — `BuyerDocument` + `Retailer.verificationStatus`, upload→review→decision APIs, **age-restricted checkout gate** (403 `VERIFICATION_REQUIRED`)
+- ✅ **Multi-location ship-tos** — `RetailerLocation` CRUD (checkout selector still pending)
+- ✅ **Auth tokens** — email verification + password reset (hashed, single-use, rate-limited)
+- ✅ **`WholesalerBuyerApproval` table** (schema only — UI/routes pending)
+- ✅ Reorder button wired to `POST /api/orders/[id]/reorder`
+- ✅ **Migrations now run on Vercel deploys** (`vercel-build` script — they previously never ran)
 
 **Next, ordered by leverage:**
-1. **Buyer verification flow** — upload (S3 / Vercel Blob), `BuyerDocument` model, admin review queue, gate age-restricted checkout on `verificationStatus = VERIFIED`. Resale cert, EIN, state tobacco license.
-2. **Wholesaler approval table** (`WholesalerBuyerApproval`) — turns the `APPROVED_BUYERS_ONLY` field into a real gate.
-3. **Multi-location ship-tos** (`RetailerLocation`) — a chain has one bill-to but many stores. Selector at checkout.
-4. **Catalog CSV import** for wholesalers — bulk product + pricing upload (single-row create today doesn't scale).
-5. **Reorder-from-history** endpoint — `POST /api/orders/[id]/reorder` clones lines back into cart.
-6. **Tier-pricing UI** — display PRICE BREAKS table on product detail; show "you saved $X by ordering Y or more".
-7. **EDI 856 ASN parsing** — real wholesalers send X12 EDI, not JSON. Adapter layer in front of the webhook.
-8. **PACT Act reporting** — required for any tobacco shipment crossing state lines. Schema for `RegulatoryShipmentReport`, monthly export.
-9. **Lot/serial/expiration on receipt lines** — the schema currently tracks SKU+qty but not lot. Required for compliance + recall handling.
-10. **Inventory `review/route.ts` transaction wrap** — the one major route still doing non-transactional multi-writes. Needs careful refactor.
+1. **Fix audit findings** — multi-agent demo-readiness audit of `522802b` in flight; findings + fixes land in STATUS.md's audit log.
+2. **Product detail page + search results** — buyers can't open a product; blocks the core buying loop.
+3. **Admin verification queue UI → live API** (API shipped; UI still renders sample data).
+4. **Blob storage for document bytes** (Vercel Blob) + **email transport** (seam: `src/lib/mailer.ts`).
+5. **CSV import backend** — `/api/products/import` + job runner behind the finished wizard UI.
+6. **State-legality rules engine** — enforce `Product.restrictedStates` at checkout (compliance hole today).
+7. **Wholesaler onboarding wizard** + approved-buyer management UI.
+8. **EDI 856 ASN parsing** — X12 adapter in front of the webhook.
+9. **PACT Act reporting** — `RegulatoryShipmentReport` schema + monthly export.
+10. **Lot/serial/expiration on receipt lines**; **inventory `review/route.ts` transaction wrap**.
 
 **Intentionally NOT a priority:**
 - Real-time notifications (in-app DB-backed is enough for now; transport via email/SMS later)
@@ -240,6 +246,8 @@ P0 UI screens to run through this workflow are listed in `docs/PRODUCTION-PLAN.m
 
 ## Known sharp edges
 
+- **`src/lib/mailer.ts` logs instead of sending** — dev logs include the action link; production logs the attempt only. SES/Resend plugs into this one file.
+- **Buyer-document uploads are metadata-only** — review state machine is real; file bytes need Vercel Blob (signed upload) wired into `/api/buyer/documents` + `BuyerVerificationView`.
 - `next-auth@5.0.0-beta.25` — pinned to exact version because beta APIs shift. Schedule a migration to stable v5 once it ships.
 - `/api/admin/{audit,evaluations,llmops,lineage,feedback,anomalies}` return mock data despite real DB models existing. Conversion is intentional next work, not a bug.
 - `inventory/review/route.ts` is large (~600 LOC) and partly non-transactional. Rewrite carefully with full test coverage.

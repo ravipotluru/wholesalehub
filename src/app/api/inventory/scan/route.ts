@@ -191,6 +191,8 @@ export async function POST(request: NextRequest) {
         brand: product.brand,
       },
       receiptLine: {
+        // id is needed by the scanner UI's optimistic line-list update.
+        id: matchingLine.id,
         qtyExpected: txResult.qtyExpected,
         qtyReceived: txResult.qtyReceived,
         lineStatus: txResult.lineStatus,

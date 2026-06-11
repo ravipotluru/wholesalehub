@@ -152,11 +152,8 @@ export function TierPricingEditor({
           }),
         });
         if (!res.ok) {
-          if (res.status === 404) {
-            // Backend route not yet deployed — treat as soft success in dev
-            setSavedTiers(tiers);
-            return;
-          }
+          // 404 here is the route's deliberate PRICING_NOT_FOUND (no listing
+          // for this product on your account) — surface it, never mask it.
           const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
           throw new Error(body.error?.message ?? 'Save failed.');
         }

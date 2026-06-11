@@ -26,6 +26,10 @@ export default async function InventoryScanPage({ params }: PageProps) {
         select: {
           id: true,
           productId: true,
+          // Denormalized columns — the source of truth for webhook-ingested
+          // lines, where the product relation is null until a scan matches.
+          productName: true,
+          sku: true,
           qtyExpected: true,
           qtyReceived: true,
           lineStatus: true,
@@ -50,8 +54,10 @@ export default async function InventoryScanPage({ params }: PageProps) {
       totals={totals}
       lines={receipt.lines.map((l) => ({
         id: l.id,
-        productName: l.product.name,
-        sku: l.product.sku,
+        // Relation is null for ASN lines whose SKU hasn't matched a catalog
+        // product yet — fall back to the denormalized columns.
+        productName: l.product?.name ?? l.productName,
+        sku: l.product?.sku ?? l.sku ?? '',
         qtyExpected: l.qtyExpected,
         qtyReceived: l.qtyReceived,
         lineStatus: l.lineStatus,

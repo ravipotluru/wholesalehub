@@ -11,14 +11,25 @@
 
 const STORAGE_KEY = 'wholesalehub:scan-queue:v1';
 
+/** Must stay in lockstep with barcodeScanSchema in src/lib/validators.ts —
+ *  any value outside the server enum gets a 400 on drain and is dropped. */
+export type ScanCondition = 'GOOD' | 'DAMAGED_MINOR' | 'DAMAGED_MAJOR' | 'WRONG_ITEM';
+
 export interface QueuedScan {
   id: string;
   receiptId: string;
   barcode: string;
   quantity: number;
-  condition: 'GOOD' | 'DAMAGED';
+  condition: ScanCondition;
   scannedAt: string;
 }
+
+const VALID_CONDITIONS: ReadonlyArray<string> = [
+  'GOOD',
+  'DAMAGED_MINOR',
+  'DAMAGED_MAJOR',
+  'WRONG_ITEM',
+];
 
 function safeParse(raw: string | null): QueuedScan[] {
   if (!raw) return [];
@@ -32,7 +43,7 @@ function safeParse(raw: string | null): QueuedScan[] {
         typeof x.receiptId === 'string' &&
         typeof x.barcode === 'string' &&
         typeof x.quantity === 'number' &&
-        (x.condition === 'GOOD' || x.condition === 'DAMAGED') &&
+        VALID_CONDITIONS.includes(x.condition) &&
         typeof x.scannedAt === 'string',
     );
   } catch {
@@ -96,8 +107,9 @@ export function clearQueue(): void {
  */
 export async function drainQueue(opts: {
   onProgress?: (sent: number, remaining: number) => void;
-} = {}): Promise<{ sent: number; failed: number; remaining: number }> {
+} = {}): Promise<{ sent: number; dropped: number; failed: number; remaining: number }> {
   let sent = 0;
+  let dropped = 0;
   let failed = 0;
   for (const scan of read()) {
     try {
@@ -115,9 +127,15 @@ export async function drainQueue(opts: {
         failed++;
         break; // server-side issue; stop so we don't hammer
       }
-      // 2xx success or 4xx terminal — drop either way (4xx isn't going to fix itself)
       dropScan(scan.id);
-      sent++;
+      if (res.ok) {
+        sent++;
+      } else {
+        // 4xx is terminal for this entry (retry won't fix it), but it is NOT
+        // a successful sync — count it separately so callers can surface
+        // "N scans couldn't be recorded" instead of silently losing counts.
+        dropped++;
+      }
       opts.onProgress?.(sent, queueLength());
     } catch {
       // network error — leave queued, exit drain
@@ -125,5 +143,5 @@ export async function drainQueue(opts: {
       break;
     }
   }
-  return { sent, failed, remaining: queueLength() };
+  return { sent, dropped, failed, remaining: queueLength() };
 }

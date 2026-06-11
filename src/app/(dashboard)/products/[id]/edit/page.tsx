@@ -197,6 +197,9 @@ export default function EditProductPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="ghost" onClick={() => router.push(`/products/${productId}/pricing`)}>
+            Tier pricing
+          </Button>
           <Button variant="outline" onClick={() => router.push('/products')}>
             Cancel
           </Button>

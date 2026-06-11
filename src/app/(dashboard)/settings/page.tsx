@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import {
   User,
   Bell,
@@ -130,6 +131,40 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-2xl font-bold text-dark">Settings</h1>
         <p className="text-sm text-gray-500 mt-1">Manage your account preferences</p>
+      </div>
+
+      {/* Quick links to dedicated settings pages */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Link
+          href="/settings/notifications"
+          className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow flex items-start gap-3"
+        >
+          <Bell className="h-5 w-5 text-brand-blue flex-shrink-0 mt-0.5" />
+          <span>
+            <span className="block text-sm font-semibold text-dark">Notification preferences</span>
+            <span className="block text-xs text-gray-500 mt-0.5">Per-channel toggles for every category</span>
+          </span>
+        </Link>
+        <Link
+          href="/settings/verification"
+          className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow flex items-start gap-3"
+        >
+          <Shield className="h-5 w-5 text-brand-blue flex-shrink-0 mt-0.5" />
+          <span>
+            <span className="block text-sm font-semibold text-dark">Buyer verification</span>
+            <span className="block text-xs text-gray-500 mt-0.5">Upload licenses to unlock restricted SKUs</span>
+          </span>
+        </Link>
+        <Link
+          href="/settings/locations"
+          className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow flex items-start gap-3"
+        >
+          <Building2 className="h-5 w-5 text-brand-blue flex-shrink-0 mt-0.5" />
+          <span>
+            <span className="block text-sm font-semibold text-dark">Ship-to locations</span>
+            <span className="block text-xs text-gray-500 mt-0.5">Manage your store addresses</span>
+          </span>
+        </Link>
       </div>
 
       {/* Current User Info Card */}

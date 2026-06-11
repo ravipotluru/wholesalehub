@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 interface PasswordChecks {
   length: boolean;
   mixedCase: boolean;
-  numberOrSymbol: boolean;
+  hasNumber: boolean;
   notCommon: boolean;
 }
 
@@ -32,7 +32,9 @@ function evaluate(pw: string): PasswordChecks {
   return {
     length: pw.length >= 12,
     mixedCase: /[a-z]/.test(pw) && /[A-Z]/.test(pw),
-    numberOrSymbol: /[0-9!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?`~]/.test(pw),
+    // Server policy (resetPasswordSchema) requires a DIGIT specifically —
+    // symbols alone don't satisfy it, so the checklist must match.
+    hasNumber: /[0-9]/.test(pw),
     notCommon: pw.length > 0 && !COMMON_PASSWORDS.has(pw.toLowerCase()),
   };
 }
@@ -121,7 +123,7 @@ export function NewPasswordForm({ token }: { token: string }) {
         <ul className="mt-2 space-y-1 text-[11px] text-gray-500">
           <CheckLine met={checks.length}>At least 12 characters</CheckLine>
           <CheckLine met={checks.mixedCase}>Mixed case</CheckLine>
-          <CheckLine met={checks.numberOrSymbol}>Number or symbol</CheckLine>
+          <CheckLine met={checks.hasNumber}>Contains a number</CheckLine>
           <CheckLine met={checks.notCommon}>Not a common password</CheckLine>
         </ul>
       </div>
@@ -178,7 +180,7 @@ export function NewPasswordForm({ token }: { token: string }) {
           pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowRight className="h-3.5 w-3.5" />
         }
       >
-        {pending ? 'Updating…' : 'Update password & sign in'}
+        {pending ? 'Updatingâ€¦' : 'Update password & sign in'}
       </Button>
     </form>
   );

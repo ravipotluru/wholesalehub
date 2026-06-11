@@ -3,6 +3,7 @@ import { Mail, ExternalLink, Info, ShieldCheck } from 'lucide-react';
 import { getAuthedUser } from '@/lib/session';
 import { redirect } from 'next/navigation';
 import { AuthShell, StatCards, Quote } from '../_components/AuthShell';
+import { ResendButton } from './ResendButton';
 
 /**
  * /verify-email — post-signup waiting screen.
@@ -75,10 +76,7 @@ export default async function VerifyEmailPage() {
         </a>
 
         <p className="text-xs text-gray-400 mt-3.5">
-          Didn&apos;t get it?{' '}
-          <button type="button" className="text-brand-teal font-medium hover:text-brand-teal-dark">
-            Resend verification email
-          </button>
+          Didn&apos;t get it? <ResendButton />
         </p>
 
         <p className="text-[11px] text-gray-400 mt-4">

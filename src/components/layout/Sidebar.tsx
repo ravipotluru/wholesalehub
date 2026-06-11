@@ -30,6 +30,7 @@ const navSections: NavSection[] = [
       { label: 'Cart', href: '/cart', icon: ShoppingCart, roles: ['RETAILER'] },
       { label: 'Orders', href: '/orders', icon: Package, roles: ['ADMIN', 'RETAILER', 'WHOLESALER'] },
       { label: 'My Products', href: '/products', icon: Package, roles: ['WHOLESALER'] },
+      { label: 'Import Catalog', href: '/products/import', icon: ClipboardList, roles: ['WHOLESALER'] },
       { label: 'Pricing', href: '/pricing', icon: DollarSign, roles: ['WHOLESALER'] },
       { label: 'Incoming Orders', href: '/incoming-orders', icon: Inbox, roles: ['WHOLESALER'] },
       { label: 'Inventory', href: '/inventory', icon: Warehouse, roles: ['ADMIN', 'WAREHOUSE_STAFF'] },
@@ -40,12 +41,22 @@ const navSections: NavSection[] = [
     ],
   },
   {
+    title: 'Account',
+    items: [
+      { label: 'Verification', href: '/settings/verification', icon: Shield, roles: ['RETAILER'] },
+      { label: 'Locations', href: '/settings/locations', icon: Warehouse, roles: ['RETAILER'] },
+      { label: 'Notification Prefs', href: '/settings/notifications', icon: Bell, roles: ['ADMIN', 'RETAILER', 'WHOLESALER', 'WAREHOUSE_STAFF', 'ANALYST'] },
+    ],
+  },
+  {
     title: 'Admin',
     items: [
+      { label: 'Verification Queue', href: '/admin/verification', icon: ClipboardList, roles: ['ADMIN'] },
       { label: 'Audit Trail', href: '/admin/audit', icon: Shield, roles: ['ADMIN'] },
       { label: 'Evaluations', href: '/admin/evaluations', icon: FlaskConical, roles: ['ADMIN'] },
       { label: 'LLMOps', href: '/admin/llmops', icon: Cpu, roles: ['ADMIN'] },
       { label: 'Anomalies', href: '/admin/anomalies', icon: AlertTriangle, roles: ['ADMIN'] },
+      { label: 'Design Gallery', href: '/design-gallery', icon: LayoutDashboard, roles: ['ADMIN'] },
     ],
   },
 ];

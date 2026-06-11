@@ -1,4 +1,4 @@
-/** @type {import('next').NextConfig} */
+﻿/** @type {import('next').NextConfig} */
 
 /**
  * Production security headers.
@@ -7,7 +7,8 @@
  *   inline scripts that Next emits for hydration. `frame-ancestors 'none'`
  *   prevents clickjacking even on browsers that ignore X-Frame-Options.
  * - HSTS: assumes HTTPS-only in production (Vercel/CDN terminates TLS).
- * - Permissions-Policy: lock down sensors/camera by default.
+ * - Permissions-Policy: sensors locked down; camera=(self) because the
+ *   warehouse barcode scanner uses getUserMedia on /inventory/receive/[id]/scan.
  *
  * Tighten further in a later pass once we've confirmed the marketplace
  * doesn't load fonts/images from new origins.
@@ -39,7 +40,7 @@ const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'X-Frame-Options', value: 'DENY' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-  { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(self), interest-cohort=()' },
+  { key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=(self), interest-cohort=()' },
   { key: 'X-DNS-Prefetch-Control', value: 'on' },
 ];
 

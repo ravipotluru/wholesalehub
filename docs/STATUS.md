@@ -82,18 +82,27 @@ Multi-agent audits run against specific commits. Findings land here with a verdi
 
 | Date | Audit | Commit audited | Result |
 |---|---|---|---|
-| 2026-05-06 | 7-dimension demo-readiness audit (prisma fields, API contracts, component props, demo navigation, migration/deploy drift, auth funnel, business logic) + adversarial verification per finding | `522802b` | ⏳ IN FLIGHT — findings will be appended here with FIXED/OPEN status and fixing commit hashes |
+| 2026-05-06 | 7-dimension demo-readiness audit (38 agents, adversarial verification per finding) | `522802b` | **30 confirmed / 15 minor / 1 refuted** → deduped to 5 clusters, all fixed in the commit following `857a047` (see table) |
 
-Known-open items already identified (pre-audit, by inspection):
-- **OPEN:** register → `/verify-email` funnel — page requires a session but registration doesn't sign in; suspected dead-end, audit confirming.
-- **OPEN:** admin queue UI on sample data (API live).
-- **OPEN:** design-gallery statuses stale.
-- **OPEN:** no typecheck has run on `e959d2f`..`522802b` (no Node on the authoring machine) — **CI / first Vercel build is the verifier**; expect possible compile fixes.
+### Confirmed findings → resolutions (CLOSED — do not re-investigate)
+
+| # | Finding (deduped cluster) | Resolution |
+|---|---|---|
+| 1 | **Scanner contract mismatch** — UI read `body.line`; API returns `{matched, product, receiptLine}` (no id). Every successful scan rendered "Not on this receipt" while the DB committed the count. | FIXED: route now includes `receiptLine.id`; ScannerScreen branches on `matched`/`receiptLine` explicitly. |
+| 2 | **Scan page null-deref** — `l.product.name` on optional relation; webhook-ingested lines ALWAYS have `product=null` → crash on the primary workflow + strict-mode compile error. | FIXED: select denormalized `productName`/`sku`, fallback `l.product?.name ?? l.productName`. |
+| 3 | **Offline queue** — condition type `'DAMAGED'` not in server enum (silent permanent loss on drain); 4xx drops counted as "sent". | FIXED: union matches `barcodeScanSchema`; drain returns separate `dropped` count. |
+| 4 | **Auth funnel (6 findings)** — middleware blocked `/reset-password` + `/verify-email/confirm` (reset flow impossible); confirm page required session (email click dead-ended at /login) and ignored `verified=0`; register never reached /verify-email; login "Forgot Password?" was `href="#"`; (auth) layout wrapper fought AuthShell; resend button was dead. | FIXED: middleware whitelist; pages moved to bare `(auth-screens)` group; confirm page session-optional + failure state; register auto-signs-in → `/verify-email`; real link; client `ResendButton`. |
+| 5 | **Deploy** — migrations have **no baseline** (`migrate deploy` can't provision fresh DB, P3005 on existing); `Permissions-Policy: camera=()` blocked getUserMedia on the scanner. | FIXED: `vercel-build` uses `prisma db push` (see decision log); `camera=(self)`. |
+| 6 | **Nav: zero links to new screens** — notifications/verification/locations/import/design-gallery/admin-queue unreachable; settings hub didn't link sub-pages; product edit didn't link tier pricing; receipt detail opened the OLD ScannerModal. | FIXED: Sidebar "Account" section + admin entries; settings-hub quick links; "Tier pricing" button on edit; Start Scanning navigates to the new scan page. |
+| 7 | **Tier editor masked 404** as soft success (route's deliberate PRICING_NOT_FOUND). Password checklist said "Number or symbol"; server requires a digit. | FIXED: surface the error; checklist says "Contains a number" and tests digits. |
+
+**Still OPEN (minor, tracked):** 15 minor findings in the audit output (incl. stale design-gallery statuses, admin queue UI on sample data) — full list: workflow output `wf_ed67e48a-9b2`. No typecheck has run locally; **CI / first Vercel build remains the compile verifier.**
 
 ## Decision log (so we don't re-litigate)
 
 | Decision | Why | Date |
 |---|---|---|
+| **`vercel-build` uses `prisma db push`, not `migrate deploy`** (exception to schema.md) | The migrations folder has NO baseline for the original 35-model schema — `migrate deploy` cannot provision a fresh DB and hits P3005 on the existing one. `db push` is idempotent and additive-safe. **Follow-up owed:** on a machine with Node, generate a baseline migration (`prisma migrate diff` → squash), `migrate resolve --applied` on prod, then switch back to `migrate deploy`. | 2026-05-06 |
 | Email verification tracked on `users.emailVerifiedAt`, NOT `UserStatus` | Login blocks any `status != ACTIVE`; using status would lock out new signups | 2026-05-06 |
 | Document uploads are metadata-first | Blob storage not wired; review state machine works end-to-end now, bytes follow | 2026-05-06 |
 | Big-bundle pushes direct to `main` | Owner's explicit standing instruction (overrides CLAUDE.md rule 10 for these pushes) | 2026-05-04 |

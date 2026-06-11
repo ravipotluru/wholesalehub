@@ -143,18 +143,24 @@ export function ScannerScreen({ receiptId, poNumber, status, totals, lines }: Sc
         return;
       }
 
-      // Optimistic line update from response
-      const line = body.line as
+      // Response contract (see /api/inventory/scan):
+      //   { matched: false }                          -> barcode not in catalog
+      //   { matched: true, product, receiptLine: null } -> product exists, not on this receipt
+      //   { matched: true, product, receiptLine }       -> counted (id, qtyReceived, qtyExpected, lineStatus)
+      const matched = body.matched === true;
+      const product = body.product as { name?: string } | undefined;
+      const line = body.receiptLine as
         | {
             id: string;
             qtyReceived: number;
             qtyExpected: number;
             lineStatus: string;
-            product?: { name?: string };
+            hasDiscrepancy?: boolean;
           }
+        | null
         | undefined;
 
-      if (line) {
+      if (matched && line) {
         setLinesState((current) =>
           current.map((l) =>
             l.id === line.id
@@ -169,7 +175,7 @@ export function ScannerScreen({ receiptId, poNumber, status, totals, lines }: Sc
         const variance = line.qtyReceived - line.qtyExpected;
         const last: LastScan = {
           barcode,
-          productName: line.product?.name ?? 'Unknown product',
+          productName: product?.name ?? 'Unknown product',
           qtyAfter: line.qtyReceived,
           qtyExpected: line.qtyExpected,
           variance,
@@ -181,7 +187,9 @@ export function ScannerScreen({ receiptId, poNumber, status, totals, lines }: Sc
       } else {
         setLastScan({
           barcode,
-          productName: 'Not on this receipt',
+          productName: matched
+            ? `${product?.name ?? 'Product'} — not on this receipt`
+            : 'Unknown barcode — not in catalog',
           qtyAfter: 0,
           qtyExpected: 0,
           variance: 0,

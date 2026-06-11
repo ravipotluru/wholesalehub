@@ -328,7 +328,7 @@ export default function ReceiptDetailPage() {
           <Button
             variant="primary"
             leftIcon={<Camera className="h-4 w-4" />}
-            onClick={() => setScannerOpen(true)}
+            onClick={() => router.push(`/inventory/receive/${receiptId}/scan`)}
             disabled={receipt.status === 'COMPLETED'}
           >
             Start Scanning

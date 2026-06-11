@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { signIn } from 'next-auth/react';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -53,7 +54,20 @@ export default function RegisterPage() {
         return;
       }
 
-      router.push('/login?registered=true');
+      // Sign in with the just-created credentials so the user lands on the
+      // verify-email screen (it personalizes from the session). Fall back to
+      // the login page if the auto-sign-in hiccups.
+      const signInResult = await signIn('credentials', {
+        email: data.email,
+        password: data.password,
+        redirect: false,
+      });
+      if (signInResult?.ok) {
+        router.push('/verify-email');
+        router.refresh();
+      } else {
+        router.push('/login?registered=true');
+      }
     } catch {
       setError('An unexpected error occurred. Please try again.');
     }

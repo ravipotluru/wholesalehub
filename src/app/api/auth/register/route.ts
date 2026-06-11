@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma';
 import { registerSchema } from '@/lib/validators';
 import { logger } from '@/lib/logger';
 import { rateLimit, clientIp } from '@/lib/rate-limit';
+import { issueToken } from '@/lib/tokens';
+import { sendActionEmail, appBaseUrl } from '@/lib/mailer';
 
 export async function POST(request: NextRequest) {
   try {
@@ -109,6 +111,25 @@ export async function POST(request: NextRequest) {
       role: data.role,
       email,
     });
+
+    // Kick off email verification. Best-effort: registration never fails
+    // because the mail step did (login stays open; age-restricted checkout
+    // is what's gated on emailVerifiedAt).
+    try {
+      const raw = await issueToken(userId, 'EMAIL_VERIFICATION');
+      await sendActionEmail({
+        to: email,
+        kind: 'email_verification',
+        subject: 'Verify your WholesaleHub email',
+        actionUrl: `${appBaseUrl()}/api/auth/verify-email?token=${raw}`,
+      });
+    } catch (error) {
+      logger.error({
+        event: 'email_verification_issue_failed',
+        userId,
+        error: (error as Error).message,
+      });
+    }
 
     return NextResponse.json(
       { message: 'Account created successfully', userId },

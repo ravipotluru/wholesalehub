@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   FileCheck2,
   FileWarning,
@@ -57,30 +57,23 @@ export function BuyerVerificationView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch('/api/buyer/verification-status');
-        if (res.status === 404) {
-          // Endpoint not yet deployed (PR #17 pending) — show empty state
-          if (!cancelled)
-            setStatus({ status: 'UNVERIFIED', documents: [], required: REQUIRED_DOCS.map((d) => d.type) });
-          return;
-        }
-        if (!res.ok) throw new Error('Could not load verification status.');
-        const body = (await res.json()) as VerificationStatus;
-        if (!cancelled) setStatus(body);
-      } catch (e) {
-        if (!cancelled) setError((e as Error).message);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch('/api/buyer/verification-status');
+      if (!res.ok) throw new Error('Could not load verification status.');
+      const body = (await res.json()) as VerificationStatus;
+      setStatus(body);
+      setError(null);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   if (loading) {
     return (
@@ -100,7 +93,15 @@ export function BuyerVerificationView() {
       <div className="space-y-3">
         {REQUIRED_DOCS.map((doc) => {
           const submitted = status.documents.find((d) => d.type === doc.type);
-          return <DocRow key={doc.type} required={doc} submitted={submitted} />;
+          return (
+            <DocRow
+              key={doc.type}
+              required={doc}
+              submitted={submitted}
+              onUploaded={load}
+              onError={setError}
+            />
+          );
         })}
       </div>
     </div>
@@ -153,11 +154,49 @@ function StatusBanner({ status }: { status: VerificationStatus['status'] }) {
 function DocRow({
   required,
   submitted,
+  onUploaded,
+  onError,
 }: {
   required: { type: BuyerDoc['type']; label: string; description: string };
   submitted?: BuyerDoc;
+  onUploaded: () => Promise<void>;
+  onError: (message: string | null) => void;
 }) {
   const status = submitted?.status;
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const onFilePicked = async (file: File) => {
+    onError(null);
+    if (file.size > 10 * 1024 * 1024) {
+      onError(`${file.name} is over the 10 MB limit.`);
+      return;
+    }
+    setUploading(true);
+    try {
+      // Metadata-first flow: the review pipeline is live; signed-URL blob
+      // upload is the wired-next step (see /api/buyer/documents).
+      const res = await fetch('/api/buyer/documents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: required.type,
+          fileName: file.name,
+          fileSizeBytes: file.size,
+        }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+        throw new Error(body.error?.message ?? 'Upload failed.');
+      }
+      await onUploaded();
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4 flex items-start gap-4">
       <div
@@ -197,15 +236,33 @@ function DocRow({
           </p>
         )}
         <div className="mt-3">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.jpg,.jpeg,.png"
+            className="sr-only"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void onFilePicked(file);
+            }}
+          />
           <Button
             type="button"
             variant={status === 'APPROVED' ? 'ghost' : 'secondary'}
             size="sm"
-            leftIcon={<Upload className="h-3.5 w-3.5" />}
-            onClick={() => alert('TODO: open file picker + signed-URL upload flow')}
-            disabled={status === 'PENDING'}
+            leftIcon={
+              uploading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Upload className="h-3.5 w-3.5" />
+              )
+            }
+            onClick={() => fileInputRef.current?.click()}
+            disabled={status === 'PENDING' || uploading}
           >
-            {status === 'APPROVED'
+            {uploading
+              ? 'Uploading…'
+              : status === 'APPROVED'
               ? 'Replace'
               : status === 'PENDING'
               ? 'In review'

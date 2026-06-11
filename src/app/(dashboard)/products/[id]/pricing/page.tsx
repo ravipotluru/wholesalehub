@@ -29,13 +29,13 @@ export default async function TierPricingEditorPage({ params }: PageProps) {
       sku: true,
       brand: true,
       category: { select: { name: true } },
-      isActive: true,
+      status: true,
       pricings: {
         where: user.role === 'WHOLESALER' ? { wholesalerId: user.wholesalerId ?? '' } : undefined,
         select: {
           id: true,
           wholesalePrice: true,
-          minOrderQty: true,
+          minimumOrderQty: true,
           tiers: {
             orderBy: { minQty: 'asc' },
             select: { id: true, minQty: true, unitPrice: true },
@@ -81,9 +81,9 @@ export default async function TierPricingEditorPage({ params }: PageProps) {
             sku: product.sku,
             brand: product.brand,
             category: product.category?.name ?? null,
-            isActive: product.isActive,
+            isActive: product.status === 'ACTIVE',
             basePrice: decimalToString(pricing?.wholesalePrice),
-            moq: pricing?.minOrderQty ?? 1,
+            moq: pricing?.minimumOrderQty ?? 1,
           }}
           initialTiers={tiers}
         />

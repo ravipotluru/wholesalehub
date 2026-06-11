@@ -197,6 +197,30 @@ export async function POST(request: NextRequest) {
         supplierGroups[item.wholesalerId].push(item);
       }
 
+      // Compliance gate: age-restricted SKUs require a VERIFIED buyer.
+      // This is the enforcement point for the whole buyer-verification flow
+      // (docs upload → admin review → VERIFIED on Retailer).
+      const hasAgeRestricted = cartItems.some((i) => i.product.ageRestricted);
+      if (hasAgeRestricted) {
+        const retailerRow = await tx.retailer.findUnique({
+          where: { id: retailerId },
+          select: { verificationStatus: true },
+        });
+        if (retailerRow?.verificationStatus !== 'VERIFIED') {
+          return {
+            ok: false as const,
+            status: 403,
+            body: {
+              error:
+                'Your cart contains age-restricted products. Complete buyer verification to purchase them.',
+              code: 'VERIFICATION_REQUIRED',
+              verificationStatus: retailerRow?.verificationStatus ?? 'UNVERIFIED',
+              actionUrl: '/settings/verification',
+            },
+          };
+        }
+      }
+
       // Single batched pricing lookup instead of N+1 inside a nested loop.
       // We pull the full pricing + tier rows because checkout re-prices each
       // line: tier discounts depend on the FINAL quantity, not the cart's

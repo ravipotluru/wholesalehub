@@ -157,6 +157,46 @@ enum PricingVisibility {
   APPROVED_BUYERS_ONLY
 }
 
+/// Buyer-side verification for age-restricted purchasing. Lives on Retailer
+/// (the bill-to entity), not User — a chain's verification covers all its
+/// store accounts. VERIFIED is required at checkout for ageRestricted SKUs.
+enum BuyerVerificationStatus {
+  UNVERIFIED
+  PENDING_REVIEW
+  VERIFIED
+  REJECTED
+}
+
+enum BuyerDocumentType {
+  RESALE_CERTIFICATE
+  EIN_LETTER
+  TOBACCO_LICENSE
+  STATE_BUSINESS_LICENSE
+  OTHER
+}
+
+enum BuyerDocumentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// Single-use, hashed auth tokens (email verification + password reset).
+/// Raw token never stored — see src/lib/tokens.ts.
+enum AuthTokenType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+/// Per-(wholesaler, retailer) approval that gates APPROVED_BUYERS_ONLY
+/// listings and carries negotiated payment terms.
+enum BuyerApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REVOKED
+}
+
 // ─── MODELS ───
 
 model User {
@@ -177,6 +217,9 @@ model User {
   /// JSON column holding the user's per-category, per-channel notification preferences.
   /// Shape + defaults validated at the API boundary in src/lib/notification-prefs.ts.
   notificationPreferences Json?
+  /// Set when the user clicks the emailed verification link. Login is NOT
+  /// gated on this (status stays ACTIVE) — checkout of age-restricted SKUs is.
+  emailVerifiedAt         DateTime?
   createdAt               DateTime   @default(now())
   updatedAt               DateTime   @updatedAt
 
@@ -186,6 +229,7 @@ model User {
   receiptScans  ReceiptScan[]
   searchLogs    SearchLog[]
   notifications Notification[]
+  authTokens    AuthToken[]
 
   @@index([retailerId])
   @@index([wholesalerId])
@@ -220,10 +264,11 @@ model Wholesaler {
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 
-  users         User[]
-  pricings      ProductPricing[]
-  priceHistory  PriceHistory[]
-  orders        Order[]
+  users          User[]
+  pricings       ProductPricing[]
+  priceHistory   PriceHistory[]
+  orders         Order[]
+  buyerApprovals WholesalerBuyerApproval[]
 
   @@map("wholesalers")
 }
@@ -245,12 +290,18 @@ model Retailer {
   paymentMethod  String?
   status         RetailerStatus @default(ACTIVE)
   lifetimeValue  Decimal?       @db.Decimal(12, 2) @default(0)
+  /// Gates age-restricted checkout. Flips PENDING_REVIEW on first doc upload,
+  /// VERIFIED/REJECTED on admin decision (src/app/api/admin/verification).
+  verificationStatus BuyerVerificationStatus @default(UNVERIFIED)
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
-  users     User[]
-  cartItems CartItem[]
-  orders    Order[]
+  users          User[]
+  cartItems      CartItem[]
+  orders         Order[]
+  locations      RetailerLocation[]
+  documents      BuyerDocument[]
+  buyerApprovals WholesalerBuyerApproval[]
 
   @@map("retailers")
 }
@@ -914,4 +965,96 @@ model IdempotencyKey {
   @@unique([scope, key])
   @@index([expiresAt])
   @@map("idempotency_keys")
+}
+
+/// A retailer chain's ship-to address. One bill-to (Retailer) → many stores.
+/// Selected at checkout; exactly one row per retailer has isDefault=true
+/// (enforced in the API transaction, not the DB).
+model RetailerLocation {
+  id           String   @id @default(cuid())
+  retailerId   String
+  label        String
+  address      String
+  city         String
+  state        String
+  zipCode      String
+  contactName  String?
+  contactPhone String?
+  isDefault    Boolean  @default(false)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  retailer Retailer @relation(fields: [retailerId], references: [id])
+
+  @@index([retailerId, isActive])
+  @@map("retailer_locations")
+}
+
+/// Compliance documents a retailer uploads to get VERIFIED for
+/// age-restricted SKUs. File bytes live in blob storage (fileUrl);
+/// this row is the review-state machine. Append-mostly: a re-upload
+/// creates a new row; old rows keep their decision for audit.
+model BuyerDocument {
+  id               String              @id @default(cuid())
+  retailerId       String
+  uploadedByUserId String?
+  type             BuyerDocumentType
+  fileName         String
+  fileUrl          String?
+  fileSizeBytes    Int?
+  status           BuyerDocumentStatus @default(PENDING)
+  rejectReason     String?
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  retailer Retailer @relation(fields: [retailerId], references: [id])
+
+  @@index([retailerId, type, createdAt])
+  @@index([status, createdAt])
+  @@map("buyer_documents")
+}
+
+/// Gates APPROVED_BUYERS_ONLY listings + carries negotiated per-relationship
+/// payment terms. One row per (wholesaler, retailer) pair.
+model WholesalerBuyerApproval {
+  id              String              @id @default(cuid())
+  wholesalerId    String
+  retailerId      String
+  status          BuyerApprovalStatus @default(PENDING)
+  paymentTerms    String?             // NET30 | NET15 | PREPAY | free-text custom
+  requestReason   String?             @db.Text
+  decidedByUserId String?
+  decidedAt       DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  wholesaler Wholesaler @relation(fields: [wholesalerId], references: [id])
+  retailer   Retailer   @relation(fields: [retailerId], references: [id])
+
+  @@unique([wholesalerId, retailerId])
+  @@index([retailerId, status])
+  @@index([wholesalerId, status])
+  @@map("wholesaler_buyer_approvals")
+}
+
+/// Single-use auth tokens for email verification + password reset.
+/// Only the SHA-256 hash is stored — the raw token exists once, inside
+/// the emailed link. Consumed tokens keep usedAt for audit.
+model AuthToken {
+  id        String        @id @default(cuid())
+  userId    String
+  type      AuthTokenType
+  tokenHash String        @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime      @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, type])
+  @@index([expiresAt])
+  @@map("auth_tokens")
 }

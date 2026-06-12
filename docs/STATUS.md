@@ -37,6 +37,7 @@ _Last updated: 2026-05-06 · commits through `522802b`_
 | Buyer verification (`/settings/verification`) | ✅ `e959d2f` | ✅ `522802b` | ⏳ | ⏳ | Real upload→review→decision loop. **Gap: file bytes are metadata-only until blob storage (Vercel Blob) is wired.** |
 | Multi-location ship-tos (`/settings/locations`) | ✅ `e959d2f` | ✅ `522802b` | ⏳ | ⏳ | Full CRUD, soft-delete, default promotion. **Gap: checkout doesn't offer the location selector yet.** |
 | Reorder from order detail | ✅ `5f95adf` | ✅ | ⏳ | ⏳ | Button wired to pre-existing `POST /api/orders/[id]/reorder`. |
+| **Smart Reorder w/ cross-supplier substitution** (`POST /api/orders/smart-reorder` + Orders-page button) | ✅ post-`210f50d` | ✅ | ⏳ | ⏳ | Promoted from IDEAS-2026-05 #1. Rebuilds 90-day basket; OOS lines swap to cheapest in-stock supplier; state-banned SKUs skipped with reason. Deterministic (no LLM) — Order Concierge layers on later. |
 | Age-restricted checkout gate | ✅ `522802b` | ✅ | ⏳ | ⏳ | `POST /api/orders` returns 403 `VERIFICATION_REQUIRED` unless retailer is VERIFIED. The compliance core. |
 | Product detail page (`/marketplace/[id]`) | ❌ | — | — | — | **Top gap — buyers can't open a product.** Claude Design prompt ready (see conversation log / PROMPT-TEMPLATE). |
 | Cart/checkout redesign (multi-location + tier-aware) | ❌ | — | — | — | Designs specced, not built. |

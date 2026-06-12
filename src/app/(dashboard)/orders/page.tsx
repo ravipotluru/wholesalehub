@@ -118,11 +118,56 @@ export default function OrdersPage() {
     setPage(1);
   };
 
+  const [smartReordering, setSmartReordering] = useState(false);
+
+  /**
+   * Rebuild the usual basket from the last 90 days of orders. Out-of-stock
+   * lines auto-substitute to the cheapest in-stock supplier; state-banned
+   * SKUs are skipped with the reason. See /api/orders/smart-reorder.
+   */
+  const handleSmartReorder = async () => {
+    setSmartReordering(true);
+    try {
+      const res = await fetch('/api/orders/smart-reorder', { method: 'POST' });
+      const body = await res.json();
+      if (!res.ok) {
+        throw new Error(body?.error?.message ?? 'Smart reorder failed');
+      }
+      if (body.added === 0) {
+        toast.info(body.message ?? 'Nothing to reorder yet — place an order first.');
+        return;
+      }
+      const parts = [`${body.added} item${body.added === 1 ? '' : 's'} added to cart`];
+      if (body.substituted?.length) {
+        parts.push(`${body.substituted.length} swapped to a better supplier`);
+      }
+      if (body.skipped?.length) {
+        parts.push(`${body.skipped.length} skipped (out of stock or restricted)`);
+      }
+      toast.success(parts.join(' · '));
+      router.push('/cart');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Smart reorder failed');
+    } finally {
+      setSmartReordering(false);
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-brand-blue">Orders</h1>
+        {!isWholesaler && (
+          <Button
+            variant="primary"
+            size="sm"
+            isLoading={smartReordering}
+            onClick={handleSmartReorder}
+          >
+            Smart Reorder
+          </Button>
+        )}
       </div>
 
       {/* Tabs */}

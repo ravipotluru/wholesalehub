@@ -55,7 +55,7 @@ _Last updated: 2026-05-06 · commits through `522802b`_
 | Feature | Built | Wired | Verified | Deployed | Notes / gaps |
 |---|---|---|---|---|---|
 | Mobile barcode scanner (`/inventory/receive/[id]/scan`) | ✅ `e959d2f` | ✅ uses pre-existing `/api/inventory/scan` | ⏳ | ⏳ | **Gap: camera decode is a text-input shim — needs `@zxing/browser`.** Offline queue (localStorage FIFO) shipped. |
-| Admin verification queue (`/admin/verification`) | ✅ `e959d2f` | 🟡 partial | — | ⏳ | **UI renders sample data; the real APIs (`GET /api/admin/verification`, decision POST) are live** — swap the hardcoded array next. |
+| Admin verification queue (`/admin/verification`) | ✅ `e959d2f` | ✅ post-`c1bf693` | ⏳ | ⏳ | Server page queries PENDING_REVIEW retailers; approve/reject POST the live decision API. Sample rows only as unseeded-DB fallback. Demo data: `prisma db seed` creates VERIFIED / PENDING_REVIEW / REJECTED retailers + tier ladders + ship-tos. |
 
 ### Auth & platform
 

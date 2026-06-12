@@ -951,6 +951,82 @@ async function main() {
   });
   console.log('✅ Created sample data lineage records');
 
+  // ─── P0 FLOWS DEMO DATA (tier pricing, ship-tos, buyer verification) ───
+
+  // Volume-tier ladders on the first three pricings so the tier editor and
+  // the checkout re-pricer have something real to show.
+  const tieredPricings = await prisma.productPricing.findMany({
+    take: 3,
+    orderBy: { createdAt: 'asc' },
+    select: { id: true, wholesalePrice: true },
+  });
+  for (const pricing of tieredPricings) {
+    const base = Number(pricing.wholesalePrice);
+    await prisma.priceTier.createMany({
+      data: [
+        { productPricingId: pricing.id, minQty: 12, unitPrice: Math.round(base * 0.94 * 100) / 100 },
+        { productPricingId: pricing.id, minQty: 24, unitPrice: Math.round(base * 0.88 * 100) / 100 },
+        { productPricingId: pricing.id, minQty: 48, unitPrice: Math.round(base * 0.79 * 100) / 100 },
+      ],
+    });
+  }
+  console.log(`✅ Created tier ladders on ${tieredPricings.length} pricings`);
+
+  // Ship-to locations for the primary demo retailer (chain with 3 stores).
+  await prisma.retailerLocation.createMany({
+    data: [
+      { retailerId: retailers[0].id, label: 'Main St — Flagship', address: '2841 W 25th St', city: 'Cleveland', state: 'OH', zipCode: '44113', contactName: 'Maria Lopez', contactPhone: '(216) 555-0182', isDefault: true },
+      { retailerId: retailers[0].id, label: 'Eastside Store', address: '7800 Euclid Ave', city: 'Cleveland', state: 'OH', zipCode: '44103', contactName: 'Devon Carter', isDefault: false },
+      { retailerId: retailers[0].id, label: 'Akron Warehouse', address: '120 E Mill St', city: 'Akron', state: 'OH', zipCode: '44308', isDefault: false },
+    ],
+  });
+  console.log('✅ Created 3 ship-to locations for the demo retailer');
+
+  // Buyer verification states across retailers so every screen state demos:
+  // retailer[0] = VERIFIED (age-restricted checkout works end-to-end),
+  // retailer[1] = PENDING_REVIEW w/ docs (admin queue has a real applicant),
+  // retailer[2] = REJECTED w/ reason (buyer sees the rejection + re-upload).
+  await prisma.retailer.update({
+    where: { id: retailers[0].id },
+    data: { verificationStatus: 'VERIFIED' },
+  });
+  await prisma.buyerDocument.createMany({
+    data: [
+      { retailerId: retailers[0].id, type: 'RESALE_CERTIFICATE', fileName: 'Resale_Cert_OH_2026.pdf', fileSizeBytes: 1_240_000, status: 'APPROVED', reviewedAt: new Date() },
+      { retailerId: retailers[0].id, type: 'EIN_LETTER', fileName: 'EIN_Letter_147C.pdf', fileSizeBytes: 890_000, status: 'APPROVED', reviewedAt: new Date() },
+      { retailerId: retailers[0].id, type: 'TOBACCO_LICENSE', fileName: 'Tobacco_License_OH.pdf', fileSizeBytes: 2_100_000, status: 'APPROVED', reviewedAt: new Date() },
+    ],
+  });
+
+  await prisma.retailer.update({
+    where: { id: retailers[1].id },
+    data: { verificationStatus: 'PENDING_REVIEW' },
+  });
+  await prisma.buyerDocument.createMany({
+    data: [
+      { retailerId: retailers[1].id, type: 'RESALE_CERTIFICATE', fileName: 'resale-cert-scan.pdf', fileSizeBytes: 1_480_000, status: 'PENDING' },
+      { retailerId: retailers[1].id, type: 'EIN_LETTER', fileName: 'ein-confirmation.pdf', fileSizeBytes: 720_000, status: 'PENDING' },
+      { retailerId: retailers[1].id, type: 'TOBACCO_LICENSE', fileName: 'tobacco_license_photo.jpg', fileSizeBytes: 2_900_000, status: 'PENDING' },
+    ],
+  });
+
+  await prisma.retailer.update({
+    where: { id: retailers[2].id },
+    data: { verificationStatus: 'REJECTED' },
+  });
+  await prisma.buyerDocument.create({
+    data: {
+      retailerId: retailers[2].id,
+      type: 'TOBACCO_LICENSE',
+      fileName: 'license_blurry.jpg',
+      fileSizeBytes: 3_400_000,
+      status: 'REJECTED',
+      rejectReason: 'Photo is too blurry to read the license number or expiration date. Re-shoot in good lighting on a flat surface.',
+      reviewedAt: new Date(),
+    },
+  });
+  console.log('✅ Created buyer verification demo states (VERIFIED / PENDING_REVIEW / REJECTED)');
+
   console.log('\n🎉 Database seeded successfully!');
   console.log('\n📋 Demo accounts:');
   console.log('  admin@test.com / Password123!');

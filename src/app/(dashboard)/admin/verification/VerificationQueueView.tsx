@@ -160,18 +160,47 @@ function formatAge(min: number): string {
   return m === 0 ? `${h}h` : `${h}h ${String(m).padStart(2, '0')}m`;
 }
 
-export function VerificationQueueView({ reviewerHandle }: { reviewerHandle: string }) {
+export function VerificationQueueView({
+  reviewerHandle,
+  items,
+}: {
+  reviewerHandle: string;
+  /** Real PENDING_REVIEW applicants from the server page. Falls back to
+   *  sample rows when empty so the screen still demos on an unseeded DB. */
+  items?: QueueItem[];
+}) {
+  const live = Boolean(items && items.length > 0);
+  const queue = live ? (items as QueueItem[]) : SAMPLE_QUEUE;
+
   const [tab, setTab] = useState<'pending' | 'awaiting' | 'approved' | 'rejected' | 'mine'>(
     'pending',
   );
-  const [selectedId, setSelectedId] = useState<string>(SAMPLE_QUEUE[0].id);
+  const [selectedId, setSelectedId] = useState<string>(queue[0].id);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [approvedItem, setApprovedItem] = useState<QueueItem | null>(null);
+  const [decisionError, setDecisionError] = useState<string | null>(null);
 
-  const selected = SAMPLE_QUEUE.find((q) => q.id === selectedId) ?? SAMPLE_QUEUE[0];
-  const next = SAMPLE_QUEUE.find((q) => q.id !== selectedId) ?? null;
+  const selected = queue.find((q) => q.id === selectedId) ?? queue[0];
+  const next = queue.find((q) => q.id !== selectedId) ?? null;
 
-  const onApprove = () => {
+  const decide = async (action: 'APPROVE' | 'REJECT', reason?: string): Promise<boolean> => {
+    if (!live) return true; // sample mode: UI-only
+    setDecisionError(null);
+    const res = await fetch(`/api/admin/verification/${selected.id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(action === 'REJECT' ? { action, reason } : { action }),
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+      setDecisionError(body.error?.message ?? 'Decision failed — retry.');
+      return false;
+    }
+    return true;
+  };
+
+  const onApprove = async () => {
+    if (!(await decide('APPROVE'))) return;
     setApprovedItem(selected);
     if (next) setSelectedId(next.id);
   };
@@ -271,7 +300,7 @@ export function VerificationQueueView({ reviewerHandle }: { reviewerHandle: stri
 
       <div className="flex-1 grid grid-cols-1 md:grid-cols-[380px_1fr] min-h-0">
         <aside className="bg-white border-r border-gray-200 overflow-y-auto max-h-[70vh] md:max-h-none">
-          {SAMPLE_QUEUE.map((item) => (
+          {queue.map((item) => (
             <QueueRow
               key={item.id}
               item={item}
@@ -279,9 +308,11 @@ export function VerificationQueueView({ reviewerHandle }: { reviewerHandle: stri
               onClick={() => setSelectedId(item.id)}
             />
           ))}
-          <div className="px-4 py-4 text-center text-xs text-gray-500">
-            6 more pending applications…
-          </div>
+          {!live && (
+            <div className="px-4 py-4 text-center text-xs text-gray-500">
+              Sample data — seed the database to review real applicants.
+            </div>
+          )}
         </aside>
 
         <main className="overflow-y-auto p-6">
@@ -325,11 +356,21 @@ export function VerificationQueueView({ reviewerHandle }: { reviewerHandle: stri
         </div>
       </footer>
 
+      {decisionError && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-status-error text-white text-sm rounded-lg px-4 py-2.5 shadow-lg">
+          {decisionError}
+        </div>
+      )}
+
       {rejectOpen && (
         <RejectModal
           item={selected}
           onClose={() => setRejectOpen(false)}
-          onSubmit={() => setRejectOpen(false)}
+          onSubmit={async (reason) => {
+            if (!(await decide('REJECT', reason))) return;
+            setRejectOpen(false);
+            if (next) setSelectedId(next.id);
+          }}
         />
       )}
     </div>
@@ -770,7 +811,7 @@ function RejectModal({
 }: {
   item: QueueItem;
   onClose: () => void;
-  onSubmit: () => void;
+  onSubmit: (reason: string) => void | Promise<void>;
 }) {
   const [reason, setReason] = useState<string>(REJECTION_REASONS[0]);
   const [severity, setSeverity] = useState<'soft' | 'hard' | 'permanent'>('soft');
@@ -852,7 +893,7 @@ function RejectModal({
             variant="destructive"
             size="sm"
             leftIcon={<Send className="h-3.5 w-3.5" />}
-            onClick={onSubmit}
+            onClick={() => void onSubmit(`${reason}. ${note}`.slice(0, 2000))}
           >
             Reject &amp; email buyer
           </Button>

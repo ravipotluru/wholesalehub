@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
+import { createElement } from 'react';
 import { prisma } from '@/lib/prisma';
 import { getAuthedUser } from '@/lib/session';
 import { checkoutSchema } from '@/lib/validators';
@@ -12,6 +13,8 @@ import {
   storeIdempotentResponse,
 } from '@/lib/idempotency';
 import { selectUnitPrice } from '@/lib/pricing';
+import { sendEmail } from '@/lib/email/send';
+import { OrderConfirmation } from '@/lib/email/templates/OrderConfirmation';
 
 const TAX_RATE = new Prisma.Decimal('0.0825');
 const ZERO = new Prisma.Decimal(0);
@@ -341,6 +344,7 @@ export async function POST(request: NextRequest) {
       // ─── Credit limit enforcement ────────────────────────────────────
       // If the retailer has a creditLimit, sum (open AR + this checkout)
       // and reject when the proposed total would exceed it.
+      // (`businessName` is also surfaced to the order-confirmation email.)
       const retailer = await tx.retailer.findUnique({
         where: { id: retailerId },
         select: { creditLimit: true, businessName: true },
@@ -395,6 +399,18 @@ export async function POST(request: NextRequest) {
         itemCount: number;
       }> = [];
 
+      // Per-supplier email payload assembled inside the transaction so the
+      // outer (post-commit) email fan-out has everything it needs without a
+      // second round-trip. Keep this shape narrow — these fields are the
+      // OrderConfirmation template's Props.
+      const emailPayloads: Array<{
+        orderNumber: string;
+        supplierName: string;
+        lineCount: number;
+        total: number;
+        shipToAddress: string;
+      }> = [];
+
       for (const s of supplierTotals) {
         const order = await tx.order.create({
           data: {
@@ -427,6 +443,20 @@ export async function POST(request: NextRequest) {
           status: order.orderStatus,
           itemCount: order.totalItems,
         });
+
+        emailPayloads.push({
+          orderNumber: order.orderNumber,
+          supplierName: order.wholesaler.name,
+          lineCount: order.lines.length,
+          total: Number(order.totalAmount),
+          shipToAddress: [
+            shippingAddress,
+            shippingCity,
+            `${shippingState} ${shippingZip}`,
+          ]
+            .filter(Boolean)
+            .join(', '),
+        });
       }
 
       // Clear cart inside the same transaction
@@ -448,7 +478,12 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      return { ok: true as const, createdOrders };
+      return {
+        ok: true as const,
+        createdOrders,
+        emailPayloads,
+        retailerBusinessName: retailer?.businessName ?? '',
+      };
     });
 
     if (!result.ok) {
@@ -462,6 +497,51 @@ export async function POST(request: NextRequest) {
       orderNumbers: result.createdOrders.map((o) => o.orderNumber),
       idempotent: !!idempotencyKey,
     });
+
+    // ─── Fire-and-forget order-confirmation emails ──────────────────────
+    // Scheduled with `setImmediate` so the email render + network call
+    // never blocks the API response. `sendEmail` itself never throws —
+    // it logs `email_failed` and returns. We still wrap in
+    // `Promise.allSettled` and a final `.catch` as belt-and-braces in
+    // case a future change to `sendEmail` regresses that contract.
+    const recipientEmail = user.email;
+    if (recipientEmail) {
+      const appUrl = process.env.APP_URL ?? process.env.NEXTAUTH_URL ?? 'http://localhost:3000';
+      const fromAddress = process.env.RESEND_FROM_EMAIL ?? 'orders@wholesalehub.example.com';
+      const replyTo = process.env.RESEND_REPLY_TO ?? 'support@wholesalehub.example.com';
+      const emailPayloads = result.emailPayloads;
+      const retailerBusinessName = result.retailerBusinessName;
+
+      setImmediate(() => {
+        Promise.allSettled(
+          emailPayloads.map((payload) =>
+            sendEmail({
+              to: recipientEmail,
+              from: fromAddress,
+              replyTo,
+              subject: `Order ${payload.orderNumber} confirmed`,
+              tag: 'order_confirmation',
+              react: createElement(OrderConfirmation, {
+                orderNumber: payload.orderNumber,
+                retailerBusinessName,
+                supplierName: payload.supplierName,
+                lineCount: payload.lineCount,
+                total: payload.total,
+                shipToAddress: payload.shipToAddress,
+                viewOrderUrl: `${appUrl}/orders/${payload.orderNumber}`,
+              }),
+            }),
+          ),
+        ).catch((error) => {
+          // sendEmail never throws today, but if a future change does,
+          // we don't want an unhandled rejection killing the worker.
+          logger.error({
+            event: 'email_fanout_unhandled',
+            error: (error as Error).message,
+          });
+        });
+      });
+    }
 
     return NextResponse.json({
       orders: result.createdOrders,

@@ -68,4 +68,49 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig;
+/**
+ * Sentry build-time configuration.
+ *
+ * `withSentryConfig` augments the Next config with source-map upload and
+ * tunnel routing. It runs only when `SENTRY_AUTH_TOKEN` + `SENTRY_ORG` +
+ * `SENTRY_PROJECT` are all set, otherwise it falls through to a no-op so
+ * CI builds without Sentry credentials still succeed. `silent: true` and
+ * `dryRun` together suppress the "missing auth token" warning that would
+ * otherwise pollute every local `next build`.
+ *
+ * The headers/CSP config above is preserved unchanged — `withSentryConfig`
+ * does not modify `headers()`, only build/source-map options.
+ */
+const sentryConfigured = Boolean(
+  process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT,
+);
+
+const sentryWebpackPluginOptions = {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  // Silent in CI/local dev when the auth token is missing — avoids spamming
+  // every build with "Sentry CLI not configured" warnings.
+  silent: !sentryConfigured,
+  // Dry-run when no auth token is present so source-map upload no-ops
+  // instead of failing the build.
+  dryRun: !sentryConfigured,
+  // Hide source maps from the final bundle in production.
+  hideSourceMaps: true,
+  // Don't bundle the Sentry CLI at runtime.
+  disableLogger: true,
+};
+
+let withSentryConfig;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+  ({ withSentryConfig } = require('@sentry/nextjs'));
+} catch {
+  // Package not installed yet (e.g. fresh checkout before `npm install`).
+  // Export the bare config so the build still succeeds.
+  withSentryConfig = null;
+}
+
+module.exports = withSentryConfig
+  ? withSentryConfig(nextConfig, sentryWebpackPluginOptions)
+  : nextConfig;

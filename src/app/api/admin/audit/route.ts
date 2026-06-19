@@ -6,188 +6,120 @@
  * Query params:
  *   entityType — ORDER | PRODUCT | RECEIPT | USER | PRICING
  *   action     — CREATE | UPDATE | DELETE | STATUS_CHANGE | LOGIN
- *   actorId    — filter by actor email or name
- *   from       — ISO date string (start of range)
- *   to         — ISO date string (end of range)
+ *   actorId    — filter by actorId substring (case-insensitive)
+ *   actor      — alias for `actorId` (matches the field the audit page sends)
+ *   from       — ISO date string (start of range, inclusive)
+ *   to         — ISO date string (end of range, treated as inclusive of the day)
+ *   dateFrom   — alias for `from`
+ *   dateTo     — alias for `to`
  *   traceId    — filter by trace ID
  *   page       — page number (default 1)
  *   limit      — items per page (default 25, max 100)
  *
  * Auth: ADMIN or ANALYST roles only.
+ *
+ * Response shape: `{ data: AuditEvent[], pagination }` — matches the
+ * existing UI's `AuditResponse` type.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { z } from 'zod';
+import { getAuthedUser } from '@/lib/session';
 import { logger } from '@/lib/logger';
+import { apiError } from '@/lib/api-error';
+import { listAuditEvents } from '@/lib/admin/audit';
 
 /** Allowed role set for this endpoint */
 const ALLOWED_ROLES = new Set(['ADMIN', 'ANALYST']);
 
-// ─── Types ───
-
-interface AuditEvent {
-  id: string;
-  timestamp: string;
-  actor: string;
-  actorType: 'USER' | 'SYSTEM' | 'API';
-  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'STATUS_CHANGE' | 'LOGIN';
-  entityType: 'ORDER' | 'PRODUCT' | 'RECEIPT' | 'USER' | 'PRICING';
-  entityId: string;
-  traceId: string;
-  changedFields: string[];
-  before: Record<string, unknown> | null;
-  after: Record<string, unknown> | null;
-}
-
-// ─── Mock Data ───
-
-function generateMockAuditEvents(): AuditEvent[] {
-  const actors = ['admin@wholesalehub.com', 'john.smith@retailer.com', 'SYSTEM', 'sarah.ops@wholesalehub.com', 'API_WEBHOOK', 'mike.warehouse@wholesalehub.com'];
-  const actorTypes: ('USER' | 'SYSTEM' | 'API')[] = ['USER', 'USER', 'SYSTEM', 'USER', 'API', 'USER'];
-  const actions: AuditEvent['action'][] = ['CREATE', 'UPDATE', 'DELETE', 'STATUS_CHANGE', 'LOGIN'];
-  const entityTypes: AuditEvent['entityType'][] = ['ORDER', 'PRODUCT', 'RECEIPT', 'USER', 'PRICING'];
-  const fieldSets = [
-    ['status'],
-    ['wholesalePrice', 'msrp'],
-    ['stockQuantity'],
-    ['email', 'name'],
-    ['status', 'shipmentDate'],
-    ['quantity', 'receivedBy'],
-    ['role', 'permissions'],
-    ['promoPrice', 'onPromotion'],
-  ];
-
-  const events: AuditEvent[] = [];
-  const now = Date.now();
-  const traceIds = ['trc_a1b2c3', 'trc_d4e5f6', 'trc_g7h8i9', 'trc_j0k1l2', 'trc_m3n4o5'];
-
-  for (let i = 0; i < 47; i++) {
-    const actorIdx = i % actors.length;
-    const action = actions[i % actions.length];
-    const entityType = entityTypes[i % entityTypes.length];
-    const changedFields = fieldSets[i % fieldSets.length];
-    const traceId = traceIds[i % traceIds.length];
-
-    const before: Record<string, unknown> | null = action === 'CREATE' || action === 'LOGIN' ? null : {
-      [changedFields[0]]: action === 'STATUS_CHANGE' ? 'PENDING' : action === 'UPDATE' ? 12.99 : 'old_value',
-      ...(changedFields[1] ? { [changedFields[1]]: 'previous_value' } : {}),
-    };
-
-    const after: Record<string, unknown> | null = action === 'DELETE' || action === 'LOGIN' ? null : {
-      [changedFields[0]]: action === 'STATUS_CHANGE' ? 'CONFIRMED' : action === 'CREATE' ? 'new_record' : 15.49,
-      ...(changedFields[1] ? { [changedFields[1]]: 'updated_value' } : {}),
-    };
-
-    events.push({
-      id: `aud_${String(i + 1).padStart(4, '0')}`,
-      timestamp: new Date(now - i * 3600000 * (1 + Math.random())).toISOString(),
-      actor: actors[actorIdx],
-      actorType: actorTypes[actorIdx],
-      action,
-      entityType,
-      entityId: `${entityType.toLowerCase()}_${String(100 + i).padStart(4, '0')}`,
-      traceId,
-      changedFields,
-      before,
-      after,
-    });
-  }
-
-  return events;
-}
-
-const ALL_MOCK_EVENTS = generateMockAuditEvents();
-
-// ─── GET ───
+/**
+ * Query-param schema. Aliases (`actor`, `dateFrom`, `dateTo`) are
+ * accepted because the existing audit page already sends those names —
+ * preserving them keeps the UI working.
+ */
+const querySchema = z.object({
+  entityType: z.string().min(1).max(64).optional(),
+  action: z.string().min(1).max(64).optional(),
+  actorId: z.string().min(1).max(256).optional(),
+  actor: z.string().min(1).max(256).optional(),
+  from: z.string().min(1).max(64).optional(),
+  to: z.string().min(1).max(64).optional(),
+  dateFrom: z.string().min(1).max(64).optional(),
+  dateTo: z.string().min(1).max(64).optional(),
+  traceId: z.string().min(1).max(128).optional(),
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+});
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const user = await getAuthedUser();
+    if (!user) {
+      return apiError({
+        status: 401,
+        code: 'AUTH_REQUIRED',
+        message: 'Authentication required',
+      });
     }
 
-    const user = session.user as Record<string, unknown>;
-    const role = user.role as string;
-
-    if (!ALLOWED_ROLES.has(role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (!ALLOWED_ROLES.has(user.role)) {
+      return apiError({
+        status: 403,
+        code: 'FORBIDDEN',
+        message: 'Forbidden',
+        logContext: { userId: user.id, role: user.role },
+      });
     }
 
     const { searchParams } = new URL(request.url);
-    const entityType = searchParams.get('entityType');
-    const action = searchParams.get('action');
-    const actorId = searchParams.get('actorId');
-    const from = searchParams.get('from');
-    const to = searchParams.get('to');
-    const traceId = searchParams.get('traceId');
-    const page = Math.max(parseInt(searchParams.get('page') ?? '1', 10) || 1, 1);
-    const limit = Math.min(
-      Math.max(parseInt(searchParams.get('limit') ?? '25', 10) || 25, 1),
-      100,
-    );
-
-    // Filter
-    let filtered = [...ALL_MOCK_EVENTS];
-
-    if (entityType) {
-      filtered = filtered.filter((e) => e.entityType === entityType.toUpperCase());
-    }
-    if (action) {
-      filtered = filtered.filter((e) => e.action === action.toUpperCase());
-    }
-    if (actorId) {
-      const q = actorId.toLowerCase();
-      filtered = filtered.filter((e) => e.actor.toLowerCase().includes(q));
-    }
-    if (traceId) {
-      filtered = filtered.filter((e) => e.traceId === traceId);
-    }
-    if (from) {
-      const fromMs = new Date(from).getTime();
-      if (!isNaN(fromMs)) {
-        filtered = filtered.filter((e) => new Date(e.timestamp).getTime() >= fromMs);
-      }
-    }
-    if (to) {
-      const toMs = new Date(to).getTime() + 86400000; // inclusive of the "to" day
-      if (!isNaN(toMs)) {
-        filtered = filtered.filter((e) => new Date(e.timestamp).getTime() < toMs);
-      }
+    const parsed = querySchema.safeParse(Object.fromEntries(searchParams));
+    if (!parsed.success) {
+      return apiError({
+        status: 400,
+        code: 'AUDIT_INVALID_QUERY',
+        message: 'Invalid query parameters',
+        details: { issues: parsed.error.issues },
+      });
     }
 
-    // Paginate
-    const total = filtered.length;
-    const totalPages = Math.ceil(total / limit);
-    const start = (page - 1) * limit;
-    const paged = filtered.slice(start, start + limit);
+    const q = parsed.data;
+    const result = await listAuditEvents({
+      entityType: q.entityType,
+      action: q.action,
+      actorId: q.actorId ?? q.actor,
+      from: q.from ?? q.dateFrom,
+      to: q.to ?? q.dateTo,
+      traceId: q.traceId,
+      page: q.page,
+      limit: q.limit,
+    });
 
     logger.info({
       event: 'audit_api_list',
       userId: user.id,
-      filters: { entityType, action, actorId, traceId, from, to },
-      page,
-      limit,
-      total,
+      filters: {
+        entityType: q.entityType,
+        action: q.action,
+        actorId: q.actorId ?? q.actor,
+        traceId: q.traceId,
+        from: q.from ?? q.dateFrom,
+        to: q.to ?? q.dateTo,
+      },
+      page: result.pagination.page,
+      limit: result.pagination.limit,
+      total: result.pagination.total,
     });
 
-    return NextResponse.json({
-      data: paged,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages,
-      },
-    });
+    return NextResponse.json(result);
   } catch (error) {
     logger.error({
       event: 'audit_api_get_error',
       error: (error as Error).message,
     });
-    return NextResponse.json(
-      { error: 'Failed to fetch audit events' },
-      { status: 500 },
-    );
+    return apiError({
+      status: 500,
+      code: 'AUDIT_LIST_FAILED',
+      message: 'Failed to fetch audit events',
+    });
   }
 }

@@ -39,6 +39,7 @@
     "next": "14.2.21",
     "next-auth": "5.0.0-beta.25",
     "pino": "^9.5.0",
+    "posthog-node": "^5.32.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.54.0",

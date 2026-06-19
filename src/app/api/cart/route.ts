@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getAuthedUser } from '@/lib/session';
 import { addToCartSchema } from '@/lib/validators';
 import { logger } from '@/lib/logger';
+import { capture } from '@/lib/analytics/posthog';
 
 /** GET /api/cart — Get current user's cart items grouped by supplier */
 export async function GET() {
@@ -197,6 +198,13 @@ export async function POST(request: NextRequest) {
       productId,
       wholesalerId,
       quantity,
+    });
+
+    // Fire-and-forget analytics.
+    capture({
+      event: 'cart_item_added',
+      distinctId: user.id,
+      properties: { productId, wholesalerId, quantity },
     });
 
     return NextResponse.json({

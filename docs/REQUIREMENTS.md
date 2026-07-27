@@ -166,5 +166,5 @@ international/tax-jurisdictions beyond US states · EDI X12 (adapter planned, P2
 ## 7. Release gates
 
 1. **Demo-ready** — ✅ reached 2026-05-06 (`290251d`): all 9 P0 screens wired, seeded, audited (30 findings fixed), full verification→checkout compliance loop.
-2. **Pilot (design partners)** — requires: COMP-3 blob storage + a green production build (CAT-3, CAT-4, NOTIF-3 ✅ shipped 2026-07-26; deploy runbook: `docs/DEPLOY.md`).
+2. **Pilot (design partners)** — requires: COMP-3 blob storage + live Vercel deployment (CAT-3, CAT-4, NOTIF-3 ✅ shipped 2026-07-26; **CI fully green as of `9eb3e32`** — lint/tsc, 252 tests, audit, CodeQL, `next build`; deploy runbook: `docs/DEPLOY.md`).
 3. **GA** — adds: ORD-8 payments, COMP-5 PACT export, SELL-1 onboarding, NFR-10 observability.

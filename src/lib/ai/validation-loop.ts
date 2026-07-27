@@ -68,8 +68,8 @@ const ExtractedLineItemSchema = z.object({
   upc: z.string().optional().nullable(),
   product_description: z.string().min(1, 'Product description is required'),
   quantity: z.number().int().positive('Quantity must be a positive integer'),
-  unit_cost: z.number().nonneg('Unit cost cannot be negative'),
-  line_total: z.number().nonneg('Line total cannot be negative'),
+  unit_cost: z.number().nonnegative('Unit cost cannot be negative'),
+  line_total: z.number().nonnegative('Line total cannot be negative'),
 });
 
 /** Confidence scores for each field group */
@@ -94,8 +94,8 @@ export const ReceiptExtractionSchema = z.object({
   line_items: z
     .array(ExtractedLineItemSchema)
     .min(1, 'At least one line item is required'),
-  subtotal: z.number().nonneg('Subtotal cannot be negative'),
-  tax: z.number().nonneg('Tax cannot be negative'),
+  subtotal: z.number().nonnegative('Subtotal cannot be negative'),
+  tax: z.number().nonnegative('Tax cannot be negative'),
   total: z.number().positive('Total must be positive'),
   confidence: ConfidenceSchema,
 });

@@ -5,13 +5,13 @@ import { prisma } from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { createAuditEvent } from '@/lib/audit';
 
-// ─── Request Schemas ───
+// â”€â”€â”€ Request Schemas â”€â”€â”€
 
 /** Schema for approving/correcting an extraction (POST) */
 const reviewApproveSchema = z.object({
   receiptId: z.string().min(1, 'Receipt ID is required'),
   action: z.enum(['APPROVE', 'CORRECT_AND_APPROVE', 'REJECT']),
-  /** Corrected extraction data — required when action is CORRECT_AND_APPROVE */
+  /** Corrected extraction data â€” required when action is CORRECT_AND_APPROVE */
   corrections: z
     .object({
       supplier_name: z.string().optional(),
@@ -28,7 +28,7 @@ const reviewApproveSchema = z.object({
             upc: z.string().optional().nullable(),
             productName: z.string().optional(),
             qtyExpected: z.number().int().positive().optional(),
-            unitCost: z.number().nonneg().optional(),
+            unitCost: z.number().nonnegative().optional(),
             productId: z.string().optional().nullable(),
           }),
         )
@@ -58,14 +58,14 @@ const reviewPatchSchema = z.object({
           upc: z.string().optional().nullable(),
           productName: z.string().optional(),
           qtyExpected: z.number().int().positive().optional(),
-          unitCost: z.number().nonneg().optional(),
+          unitCost: z.number().nonnegative().optional(),
         }),
       )
       .optional(),
   }),
 });
 
-// ─── Auth Helper ───
+// â”€â”€â”€ Auth Helper â”€â”€â”€
 
 interface AuthenticatedUser {
   id: string;
@@ -94,7 +94,7 @@ async function authenticateReviewUser(
       path: request.nextUrl.pathname,
     });
     return NextResponse.json(
-      { error: 'Forbidden — requires ADMIN or WAREHOUSE_STAFF role' },
+      { error: 'Forbidden â€” requires ADMIN or WAREHOUSE_STAFF role' },
       { status: 403 },
     );
   }
@@ -102,10 +102,10 @@ async function authenticateReviewUser(
   return { id: user.id, role };
 }
 
-// ─── GET /api/inventory/review ───
+// â”€â”€â”€ GET /api/inventory/review â”€â”€â”€
 
 /**
- * Lists pending review items — receipts with PENDING_DOCUMENT status
+ * Lists pending review items â€” receipts with PENDING_DOCUMENT status
  * that were routed to the human review queue by the AI pipeline.
  *
  * Query parameters:
@@ -230,7 +230,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// ─── POST /api/inventory/review ───
+// â”€â”€â”€ POST /api/inventory/review â”€â”€â”€
 
 /**
  * Approve, correct+approve, or reject a pending extraction.
@@ -280,7 +280,7 @@ export async function POST(request: NextRequest) {
     if (receipt.status !== 'PENDING_DOCUMENT') {
       return NextResponse.json(
         {
-          error: `Receipt is not in review queue — current status: ${receipt.status}`,
+          error: `Receipt is not in review queue â€” current status: ${receipt.status}`,
         },
         { status: 400 },
       );
@@ -294,7 +294,7 @@ export async function POST(request: NextRequest) {
       trackingNumber: receipt.trackingNumber,
     };
 
-    // ── REJECT ──
+    // â”€â”€ REJECT â”€â”€
     if (action === 'REJECT') {
       await prisma.inventoryReceipt.update({
         where: { id: receiptId },
@@ -334,7 +334,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // ── CORRECT_AND_APPROVE ──
+    // â”€â”€ CORRECT_AND_APPROVE â”€â”€
     if (action === 'CORRECT_AND_APPROVE' && corrections) {
       // Apply header-level corrections
       const headerUpdates: Record<string, unknown> = {};
@@ -450,7 +450,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // ── APPROVE (as-is) ──
+    // â”€â”€ APPROVE (as-is) â”€â”€
     await prisma.inventoryReceipt.update({
       where: { id: receiptId },
       data: {
@@ -499,7 +499,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// ─── PATCH /api/inventory/review ───
+// â”€â”€â”€ PATCH /api/inventory/review â”€â”€â”€
 
 /**
  * Update individual fields of a pending extraction.
@@ -544,7 +544,7 @@ export async function PATCH(request: NextRequest) {
     if (receipt.status !== 'PENDING_DOCUMENT') {
       return NextResponse.json(
         {
-          error: `Receipt is not in review queue — current status: ${receipt.status}`,
+          error: `Receipt is not in review queue â€” current status: ${receipt.status}`,
         },
         { status: 400 },
       );

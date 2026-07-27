@@ -1,16 +1,24 @@
-// Mock the Redis client BEFORE importing the SUT.
-const mockRedis = {
-  incr: jest.fn(),
-  expire: jest.fn(),
-  ttl: jest.fn(),
-};
-
-jest.mock('@/lib/redis', () => ({ redis: mockRedis }));
+/**
+ * @jest-environment node
+ */
+// Mock the Redis client BEFORE importing the SUT. The factory must be
+// self-contained: jest.mock calls are hoisted above variable declarations,
+// so it must not close over outer variables.
+jest.mock('@/lib/redis', () => ({
+  redis: {
+    incr: jest.fn(),
+    expire: jest.fn(),
+    ttl: jest.fn(),
+  },
+}));
 jest.mock('@/lib/logger', () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
+import { redis } from '@/lib/redis';
 import { rateLimit, clientIp } from '@/lib/rate-limit';
+
+const mockRedis = redis as jest.Mocked<typeof redis>;
 
 describe('rateLimit', () => {
   beforeEach(() => {

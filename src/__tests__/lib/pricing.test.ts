@@ -28,10 +28,10 @@ describe('selectUnitPrice — tier selection', () => {
     { minQty: 24, unitPrice: '8.00' },
   ];
 
-  it('uses the 1-tier for quantities below 12', () => {
+  it('prices quantities below 12 at base — the 1-tier matches but is not strictly cheaper', () => {
     const r = selectUnitPrice({ wholesalePrice: '10.00', ...noPromo }, tiers, 11);
     expect(r.unitPrice.toString()).toBe('10');
-    expect(r.appliedTierMinQty).toBe(1);
+    expect(r.appliedTierMinQty).toBeNull();
   });
 
   it('uses the 12-tier inclusively from quantity 12', () => {

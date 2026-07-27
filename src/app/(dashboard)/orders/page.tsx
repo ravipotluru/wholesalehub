@@ -69,7 +69,7 @@ export default function OrdersPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { data: session } = useSession();
-  const userRole = (session?.user as Record<string, unknown>)?.role as string | undefined;
+  const userRole = session?.user?.role;
   const isWholesaler = userRole === 'WHOLESALER';
 
   const [activeTab, setActiveTab] = useState<TabKey>('all');

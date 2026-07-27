@@ -9,7 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { getAuthedUser } from '@/lib/session';
 import { logger } from '@/lib/logger';
 
 /** Allowed role set for this endpoint */
@@ -107,13 +107,12 @@ function getMockThresholdConfigs(): ThresholdConfig[] {
 
 export async function GET() {
   try {
-    const session = await auth();
-    if (!session?.user) {
+    const user = await getAuthedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = session.user as Record<string, unknown>;
-    const role = user.role as string;
+    const role = user.role;
 
     if (!ALLOWED_ROLES.has(role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -149,13 +148,12 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user) {
+    const user = await getAuthedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = session.user as Record<string, unknown>;
-    const role = user.role as string;
+    const role = user.role;
 
     if (!ALLOWED_ROLES.has(role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -195,7 +193,7 @@ export async function POST(request: NextRequest) {
       originalValue: body.originalValue ?? null,
       correctedValue: body.correctedValue ?? null,
       reason: body.reason ?? '',
-      createdBy: (user.email as string) ?? 'unknown',
+      createdBy: user.email ?? 'unknown',
       createdAt: new Date().toISOString(),
     };
 
@@ -225,13 +223,12 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user) {
+    const user = await getAuthedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = session.user as Record<string, unknown>;
-    const role = user.role as string;
+    const role = user.role;
 
     if (!ALLOWED_ROLES.has(role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -269,7 +266,7 @@ export async function PATCH(request: NextRequest) {
         metricName: body.metricName,
         previousValue: 2.0,
         currentValue: body.newValue,
-        updatedBy: (user.email as string) ?? 'unknown',
+        updatedBy: user.email ?? 'unknown',
         updatedAt: new Date().toISOString(),
       },
     });

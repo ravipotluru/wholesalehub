@@ -65,7 +65,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const { mobileSidebarOpen, closeMobileSidebar } = useUIStore();
-  const role = (session?.user as Record<string, unknown>)?.role as string;
+  const role = session?.user?.role ?? '';
 
   const filteredSections = navSections
     .map((section) => ({

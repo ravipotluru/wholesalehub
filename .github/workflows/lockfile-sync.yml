@@ -31,6 +31,8 @@ jobs:
         run: |
           npm install --package-lock-only --ignore-scripts \
             || npm install --package-lock-only --ignore-scripts --legacy-peer-deps
+      - name: Apply non-breaking security fixes to the lock
+        run: npm audit fix --package-lock-only --omit=dev || true
       - name: Commit updated lockfile
         run: |
           if git diff --quiet package-lock.json; then

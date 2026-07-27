@@ -112,7 +112,7 @@ export default function OrderDetailPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { data: session } = useSession();
-  const userRole = (session?.user as Record<string, unknown>)?.role as string | undefined;
+  const userRole = session?.user?.role;
   const isWholesaler = userRole === 'WHOLESALER';
   const isRetailer = userRole === 'RETAILER';
 

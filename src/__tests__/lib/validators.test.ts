@@ -322,7 +322,7 @@ describe('productSearchSchema', () => {
     const result = productSearchSchema.safeParse({});
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.sort).toBe('price_asc');
+      expect(result.data.sort).toBe('relevance');
       expect(result.data.page).toBe(1);
       expect(result.data.limit).toBe(24);
     }

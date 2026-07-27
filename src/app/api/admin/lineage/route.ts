@@ -12,7 +12,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { getAuthedUser } from '@/lib/session';
 import { logger } from '@/lib/logger';
 
 /** Allowed role set for this endpoint */
@@ -150,13 +150,12 @@ function generateMockLineage(entityType: string, entityId: string, sourceType?: 
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user) {
+    const user = await getAuthedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = session.user as Record<string, unknown>;
-    const role = user.role as string;
+    const role = user.role;
 
     if (!ALLOWED_ROLES.has(role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -177,7 +176,7 @@ export async function GET(request: NextRequest) {
     const validEntityTypes = new Set(['RECEIPT', 'ORDER', 'PRODUCT', 'PRICING']);
     if (!validEntityTypes.has(entityType.toUpperCase())) {
       return NextResponse.json(
-        { error: `Invalid entityType. Must be one of: ${[...validEntityTypes].join(', ')}` },
+        { error: `Invalid entityType. Must be one of: ${Array.from(validEntityTypes).join(', ')}` },
         { status: 400 },
       );
     }

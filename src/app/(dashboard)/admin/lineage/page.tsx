@@ -189,7 +189,7 @@ function TimelineNode({ node, isLast }: { node: LineageNode; isLast: boolean }) 
 
       {/* Node Content */}
       <div className={cn('flex-1 mb-6', isLast && 'mb-0')}>
-        <Card className="border-l-4" style={{ borderLeftColor: `var(--tw-${node.transformationType === 'CREATED' ? 'success' : 'brand-blue'})` }}>
+        <Card className={cn('border-l-4', node.transformationType === 'CREATED' ? 'border-l-success' : 'border-l-brand-blue')}>
           <div
             className="flex items-center justify-between cursor-pointer"
             onClick={() => setExpanded(!expanded)}

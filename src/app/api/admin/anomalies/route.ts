@@ -10,7 +10,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { getAuthedUser } from '@/lib/session';
 import { logger } from '@/lib/logger';
 import {
   runAllAnomalyDetection,
@@ -44,13 +44,12 @@ const VALID_SEVERITIES = new Set<string>(Object.values(AnomalySeverity));
 export async function GET(request: NextRequest) {
   try {
     // ── Auth ──────────────────────────────────────────────────────────────
-    const session = await auth();
-    if (!session?.user) {
+    const user = await getAuthedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = session.user as Record<string, unknown>;
-    const role = user.role as string;
+    const role = user.role;
 
     if (!ALLOWED_ROLES.has(role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -66,7 +65,7 @@ export async function GET(request: NextRequest) {
     // Validate type filter
     if (typeFilter && !VALID_TYPES.has(typeFilter)) {
       return NextResponse.json(
-        { error: `Invalid type filter. Must be one of: ${[...VALID_TYPES].join(', ')}` },
+        { error: `Invalid type filter. Must be one of: ${Array.from(VALID_TYPES).join(', ')}` },
         { status: 400 },
       );
     }
@@ -79,7 +78,7 @@ export async function GET(request: NextRequest) {
         if (!VALID_SEVERITIES.has(part)) {
           return NextResponse.json(
             {
-              error: `Invalid severity filter "${part}". Must be one of: ${[...VALID_SEVERITIES].join(', ')}`,
+              error: `Invalid severity filter "${part}". Must be one of: ${Array.from(VALID_SEVERITIES).join(', ')}`,
             },
             { status: 400 },
           );
@@ -141,13 +140,12 @@ export async function GET(request: NextRequest) {
 export async function POST() {
   try {
     // ── Auth ──────────────────────────────────────────────────────────────
-    const session = await auth();
-    if (!session?.user) {
+    const user = await getAuthedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = session.user as Record<string, unknown>;
-    const role = user.role as string;
+    const role = user.role;
 
     if (!ALLOWED_ROLES.has(role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

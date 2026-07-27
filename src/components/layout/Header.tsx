@@ -25,8 +25,8 @@ export function Header() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const user = session?.user as Record<string, unknown> | undefined;
-  const role = user?.role as string;
+  const user = session?.user;
+  const role = user?.role;
   const showCart = role === 'RETAILER';
 
   return (

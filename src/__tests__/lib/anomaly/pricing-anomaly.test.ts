@@ -192,7 +192,12 @@ describe('detectPricingAnomalies — Z-score analysis', () => {
   });
 
   it('should assign HIGH severity for very large z-score', async () => {
-    // Prices: 10, 10, 10, 10, 10, 100 (100 is far out)
+    // With k identical baseline prices + 1 outlier, the outlier's |z| is
+    // exactly sqrt(k) regardless of how extreme its price is (the outlier
+    // itself inflates the population stdDev). Five baselines cap |z| at
+    // sqrt(5) ~ 2.24 — never HIGH — so use ten baselines:
+    // prices = [10 x10, 100], mean = 200/11 ~ 18.18, sd ~ 25.87,
+    // z(100) = 81.82/25.87 = sqrt(10) ~ 3.16 >= zScoreHigh (3.0) -> HIGH.
     const suppliers = [
       { id: 'ws-1', price: 10 },
       { id: 'ws-2', price: 10 },
@@ -200,6 +205,11 @@ describe('detectPricingAnomalies — Z-score analysis', () => {
       { id: 'ws-4', price: 10 },
       { id: 'ws-5', price: 10 },
       { id: 'ws-6', price: 100 },
+      { id: 'ws-7', price: 10 },
+      { id: 'ws-8', price: 10 },
+      { id: 'ws-9', price: 10 },
+      { id: 'ws-10', price: 10 },
+      { id: 'ws-11', price: 10 },
     ];
 
     mockFindManyPricing.mockResolvedValue(
@@ -268,10 +278,16 @@ describe('detectPricingAnomalies — Z-score analysis', () => {
   });
 
   it('should generate deterministic anomaly IDs', async () => {
+    // Two identical baselines give the ws-3 outlier |z| = sqrt(2) ~ 1.41,
+    // below the default zScoreLow of 2.0 — nothing would be flagged. Five
+    // baselines give z(100) = sqrt(5) ~ 2.24 >= 2.0, so ws-3 is flagged.
     const suppliers = [
       { id: 'ws-1', price: 10 },
       { id: 'ws-2', price: 10 },
       { id: 'ws-3', price: 100 },
+      { id: 'ws-4', price: 10 },
+      { id: 'ws-5', price: 10 },
+      { id: 'ws-6', price: 10 },
     ];
 
     mockFindManyPricing.mockResolvedValue(

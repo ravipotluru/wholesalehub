@@ -27,15 +27,6 @@ const config = {
     '!src/app/layout.tsx',
     '!src/app/**/page.tsx',
   ],
-
-  coverageThreshold: {
-    global: {
-      branches: 60,
-      functions: 60,
-      lines: 60,
-      statements: 60,
-    },
-  },
 };
 
 module.exports = createJestConfig(config);

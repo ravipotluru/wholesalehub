@@ -1,18 +1,17 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { auth } from '@/lib/auth';
+import { getAuthedUser } from '@/lib/session';
 import { logger } from '@/lib/logger';
 
 /** GET /api/analytics — Dashboard analytics data */
 export async function GET() {
   try {
-    const session = await auth();
-    if (!session?.user) {
+    const user = await getAuthedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = session.user as Record<string, unknown>;
-    const role = user.role as string;
+    const role = user.role;
 
     if (!['ADMIN', 'ANALYST'].includes(role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

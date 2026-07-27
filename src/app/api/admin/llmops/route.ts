@@ -11,7 +11,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { getAuthedUser } from '@/lib/session';
 import { logger } from '@/lib/logger';
 
 /** Allowed role set for this endpoint */
@@ -130,13 +130,12 @@ function generateMockABTests(): MockABTest[] {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user) {
+    const user = await getAuthedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = session.user as Record<string, unknown>;
-    const role = user.role as string;
+    const role = user.role;
 
     if (!ALLOWED_ROLES.has(role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -147,7 +146,7 @@ export async function GET(request: NextRequest) {
 
     if (!VALID_VIEWS.has(view)) {
       return NextResponse.json(
-        { error: `Invalid view. Must be one of: ${[...VALID_VIEWS].join(', ')}` },
+        { error: `Invalid view. Must be one of: ${Array.from(VALID_VIEWS).join(', ')}` },
         { status: 400 },
       );
     }
@@ -213,13 +212,12 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user) {
+    const user = await getAuthedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = session.user as Record<string, unknown>;
-    const role = user.role as string;
+    const role = user.role;
 
     if (!ALLOWED_ROLES.has(role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

@@ -6,7 +6,7 @@ export default async function HomePage() {
   const session = await auth();
 
   if (session?.user) {
-    const role = (session.user as Record<string, unknown>).role as string;
+    const role = session.user.role;
     redirect(getRoleRedirect(role));
   }
 

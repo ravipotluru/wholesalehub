@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { auth } from '@/lib/auth';
+import { getAuthedUser } from '@/lib/session';
 import { prisma } from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { createAuditEvent } from '@/lib/audit';
@@ -79,13 +79,12 @@ interface AuthenticatedUser {
 async function authenticateReviewUser(
   request: NextRequest,
 ): Promise<AuthenticatedUser | NextResponse> {
-  const session = await auth();
-  if (!session?.user) {
+  const user = await getAuthedUser();
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const user = session.user as Record<string, unknown>;
-  const role = user.role as string;
+  const role = user.role;
 
   if (role !== 'ADMIN' && role !== 'WAREHOUSE_STAFF') {
     logger.warn({
@@ -100,7 +99,7 @@ async function authenticateReviewUser(
     );
   }
 
-  return { id: user.id as string, role };
+  return { id: user.id, role };
 }
 
 // ─── GET /api/inventory/review ───

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { auth } from '@/lib/auth';
+import { getAuthedUser } from '@/lib/session';
 import { logger } from '@/lib/logger';
 import { processDocument } from '@/lib/ai/orchestration';
 
@@ -41,13 +41,12 @@ const extractRequestSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     // ── Auth Check ──
-    const session = await auth();
-    if (!session?.user) {
+    const user = await getAuthedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = session.user as Record<string, unknown>;
-    const role = user.role as string;
+    const role = user.role;
 
     if (role !== 'ADMIN' && role !== 'WAREHOUSE_STAFF') {
       logger.warn({
@@ -89,7 +88,7 @@ export async function POST(request: NextRequest) {
       documentText,
       documentUrl,
       sourceChannel: 'API',
-      actorId: user.id as string,
+      actorId: user.id,
       actorIp:
         request.headers.get('x-forwarded-for') ??
         request.headers.get('x-real-ip') ??

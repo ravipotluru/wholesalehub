@@ -1,0 +1,44 @@
+name: Lockfile Sync
+
+# package.json is sometimes edited from environments without npm (see
+# docs/STATUS.md). This workflow keeps package-lock.json in sync so
+# `npm ci` in the CI Pipeline never fails on a desynced lockfile.
+#
+# Loop safety: the bot commit only touches package-lock.json, which is
+# not in the paths filter below — and pushes made with GITHUB_TOKEN do
+# not trigger workflows anyway.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - package.json
+      - .github/workflows/lockfile-sync.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Regenerate lockfile
+        run: |
+          npm install --package-lock-only --ignore-scripts \
+            || npm install --package-lock-only --ignore-scripts --legacy-peer-deps
+      - name: Commit updated lockfile
+        run: |
+          if git diff --quiet package-lock.json; then
+            echo "Lockfile already in sync — nothing to do."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "chore: sync package-lock.json with package.json"
+          git push

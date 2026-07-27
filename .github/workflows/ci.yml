@@ -48,7 +48,10 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
-      - run: npx prisma migrate deploy
+      # db push, not migrate deploy: the migrations folder has no baseline
+      # for the original schema, so it cannot provision a fresh database.
+      # Mirrors the production build (see docs/STATUS.md decision log).
+      - run: npx prisma db push --skip-generate
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/wholesalehub_test
       - run: npm test -- --coverage

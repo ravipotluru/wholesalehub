@@ -8,6 +8,7 @@
  * Lineage records are immutable once written.
  */
 
+import type { Prisma } from '@prisma/client';
 import { prisma } from './prisma';
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
@@ -100,7 +101,9 @@ export async function createLineageRecord(params: CreateLineageParams) {
       sourceId: params.sourceId ?? null,
       sourceUrl: params.sourceUrl ?? null,
       transformationType: params.transformationType,
-      transformationDetails: params.transformationDetails ?? undefined,
+      transformationDetails: (params.transformationDetails ?? undefined) as
+        | Prisma.InputJsonValue
+        | undefined,
       evidenceType: params.evidenceType ?? null,
       evidenceUrl: params.evidenceUrl ?? null,
       evidenceHash: params.evidenceHash ?? null,

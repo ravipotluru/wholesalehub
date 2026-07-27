@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from './prisma';
 
 interface AuditContext {
@@ -32,8 +33,8 @@ export async function createAuditEvent(
       action,
       entityType,
       entityId,
-      previousState: previousState || undefined,
-      newState: newState || undefined,
+      previousState: (previousState ?? undefined) as Prisma.InputJsonValue | undefined,
+      newState: (newState ?? undefined) as Prisma.InputJsonValue | undefined,
       changedFields,
       reason: context.reason,
       traceId: context.traceId,

@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { getCache, setCache } from '@/lib/redis';
@@ -575,7 +576,7 @@ export async function logSearch(
         userId: userId ?? null,
         searchTerm,
         category: category ?? null,
-        filters,
+        filters: filters as Prisma.InputJsonValue,
         resultsCount,
       },
     });

@@ -148,7 +148,7 @@ async function notifyApproachingExpiry(prisma: PrismaClient): Promise<number> {
           data: {
             userId: u.id,
             type: 'LICENSE_EXPIRY',
-            title: `License expires in ${days} day${days === 1 ? '' : 's'}`,
+            title: `License expires in ${days} day${Number(days) === 1 ? '' : 's'}`,
             message:
               `${w.name} license expires on ${w.licenseExpiry?.toISOString().slice(0, 10)}. ` +
               `Renew before then to avoid an automatic suspension.`,

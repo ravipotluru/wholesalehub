@@ -32,113 +32,393 @@ import { cn } from '@/lib/utils';
 
 type Step = 'upload' | 'map' | 'preview' | 'importing' | 'done';
 
-interface PreviewRow {
-  rowNum: number;
+type FieldKey =
+  | 'name'
+  | 'sku'
+  | 'upc'
+  | 'brand'
+  | 'category'
+  | 'price'
+  | 'caseQty'
+  | 'moq'
+  | 'stock'
+  | 'description'
+  | 'imageUrl'
+  | 'ageRestricted';
+
+const REQUIRED_FIELDS: FieldKey[] = ['name', 'sku', 'price'];
+
+const FIELD_LABELS: Record<FieldKey, string> = {
+  name: 'Product name',
+  sku: 'SKU',
+  upc: 'UPC / EAN',
+  brand: 'Brand',
+  category: 'Category',
+  price: 'Unit price',
+  caseQty: 'Units per case',
+  moq: 'Min order qty',
+  stock: 'Stock on hand',
+  description: 'Description',
+  imageUrl: 'Image URL',
+  ageRestricted: 'Age-restricted',
+};
+
+/** Normalized CSV header (lowercase, alphanumerics only) → wizard field. */
+const HEADER_ALIASES: Record<string, FieldKey> = {
+  name: 'name',
+  productname: 'name',
+  sku: 'sku',
+  upc: 'upc',
+  barcode: 'upc',
+  brand: 'brand',
+  category: 'category',
+  price: 'price',
+  wholesaleprice: 'price',
+  cost: 'price',
+  caseqty: 'caseQty',
+  moq: 'moq',
+  minorder: 'moq',
+  minorderqty: 'moq',
+  stock: 'stock',
+  qty: 'stock',
+  quantity: 'stock',
+  desc: 'description',
+  description: 'description',
+  img: 'imageUrl',
+  image: 'imageUrl',
+  imageurl: 'imageUrl',
+  agerestricted: 'ageRestricted',
+};
+
+/** Server contract: POST /api/products/import caps rows at 5,000. */
+const MAX_ROWS = 5000;
+const MAX_DISPLAY_ROWS = 50;
+const MAX_INT = 2_147_483_647;
+const PRICE_RE = /^\d{1,8}(\.\d{1,2})?$/;
+
+interface CsvData {
+  headers: string[];
+  rows: string[][];
+}
+
+interface ColumnMapping {
+  csvCol: string;
+  sample: string;
+  field: FieldKey | null;
+}
+
+/** Row shape sent to POST /api/products/import (mirrors the route's Zod). */
+interface ApiRow {
+  name: string;
+  sku: string;
+  upc?: string;
+  brand?: string;
+  category?: string;
+  price: string;
+  caseQty?: number;
+  moq?: number;
+  stock?: number;
+  description?: string;
+  imageUrl?: string;
+  ageRestricted?: boolean;
+}
+
+interface SentRow {
+  row: ApiRow;
+  /** 1-based CSV line number (header is line 1). */
+  csvRowNum: number;
+}
+
+interface RowIssue {
+  csvRowNum: number;
+  sku: string;
+  reason: string;
+}
+
+/** Issue as returned by the API — rowIndex is the index in the sent array. */
+interface ServerIssue {
+  rowIndex: number;
+  sku: string;
+  reason: string;
+}
+
+interface DisplayRow {
+  csvRowNum: number;
   name: string;
   sku: string;
   brand: string;
   category: string;
   price: string;
-  stock: number;
-  moq: number;
-  status: 'valid' | 'warning' | 'error';
-  errorMessage?: string;
+  stock: string;
+  moq: string;
 }
 
-interface MappingRow {
-  csvCol: string;
-  sample: string;
-  target: string;
-  status: 'required' | 'mapped' | 'unmapped' | 'skipped';
+interface PreparedData {
+  sent: SentRow[];
+  clientErrors: RowIssue[];
+  displayRows: DisplayRow[];
+  totalRows: number;
 }
 
-const SAMPLE_MAPPING: MappingRow[] = [
-  { csvCol: 'name', sample: '"Raz TN9000…"', target: 'Product name', status: 'required' },
-  { csvCol: 'sku', sample: '"RZ-TN9-WMI"', target: 'SKU', status: 'required' },
-  { csvCol: 'upc', sample: '"850001234567"', target: 'UPC / EAN', status: 'mapped' },
-  { csvCol: 'brand', sample: '"Raz"', target: 'Brand', status: 'mapped' },
-  { csvCol: 'category', sample: '"Disposables"', target: 'Category', status: 'mapped' },
-  { csvCol: 'wholesale_price', sample: '"$12.50"', target: 'Unit price', status: 'required' },
-  { csvCol: 'case_qty', sample: '"24"', target: 'Units per case', status: 'mapped' },
-  { csvCol: 'moq', sample: '"6"', target: 'Min order qty', status: 'mapped' },
-  { csvCol: 'stock', sample: '"144"', target: 'Stock on hand', status: 'mapped' },
-  { csvCol: 'desc', sample: '"Disposable vape, 9000 puffs…"', target: 'Description', status: 'mapped' },
-  { csvCol: 'img_url', sample: '"https://cdn…/raz-wmi.jpg"', target: 'Image URL', status: 'mapped' },
-  { csvCol: 'age_restricted', sample: '"yes"', target: 'Age-restricted', status: 'mapped' },
-  { csvCol: 'tax_class', sample: '"TOBACCO"', target: 'Choose field…', status: 'unmapped' },
-  { csvCol: 'internal_notes', sample: '"Q2 promo eligible"', target: '— Skip column —', status: 'skipped' },
-];
+interface PreviewData {
+  errors: RowIssue[];
+  warnings: RowIssue[];
+}
 
-const SAMPLE_ERRORS: PreviewRow[] = [
-  {
-    rowNum: 14,
-    name: 'Raz TN9000 · Watermelon Ice',
-    sku: 'RZ-TN9-WMI',
-    brand: 'Raz',
-    category: 'Disposables',
-    price: '$12.50',
-    stock: 144,
-    moq: 6,
-    status: 'error',
-    errorMessage: 'Duplicate SKU — already exists in your catalog',
-  },
-  {
-    rowNum: 87,
-    name: 'Lost Mary OS5000 · Blue Razz',
-    sku: 'LM-OS5-BR',
-    brand: 'Lost Mary',
-    category: 'Disposables',
-    price: '-$5.00',
-    stock: 96,
-    moq: 4,
-    status: 'error',
-    errorMessage: 'Price must be a positive number',
-  },
-  {
-    rowNum: 142,
-    name: 'Geek Bar Pulse Sour Apple',
-    sku: '',
-    brand: 'Geek Bar',
-    category: 'Disposables',
-    price: '$11.00',
-    stock: 72,
-    moq: 6,
-    status: 'error',
-    errorMessage: 'Required field missing: SKU',
-  },
-  {
-    rowNum: 203,
-    name: 'Elf Bar BC5000 · Strawberry Mango',
-    sku: 'EB-BC5-SM',
-    brand: 'Elf Bar',
-    category: 'Vapes',
-    price: '$10.25',
-    stock: 120,
-    moq: 6,
-    status: 'error',
-    errorMessage: 'Category "Vapes" not in your taxonomy. Choose existing or add new.',
-  },
-  {
-    rowNum: 317,
-    name: 'Funky Republic Ti7000 · Peach Mango',
-    sku: 'FR-TI7-PM',
-    brand: 'Funky Republic',
-    category: 'Disposables',
-    price: '$13.75',
-    stock: 48,
-    moq: 6,
-    status: 'error',
-    errorMessage: 'Image URL is unreachable (404)',
-  },
-];
+interface CommitData {
+  created: number;
+  skipped: RowIssue[];
+}
+
+interface PreviewResponse {
+  valid: number;
+  errors: ServerIssue[];
+  warnings: ServerIssue[];
+}
+
+interface CommitResponse {
+  created: number;
+  skipped: ServerIssue[];
+}
+
+/**
+ * Minimal RFC-4180-ish CSV parser: quoted fields (embedded commas/newlines),
+ * doubled-quote escapes, CRLF/LF/CR line endings. No dependencies.
+ */
+function parseCsv(text: string): string[][] {
+  // Strip a UTF-8 BOM if present (Excel exports have one).
+  const input = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const c = input[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (input[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += c;
+      }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ',') {
+      row.push(field);
+      field = '';
+    } else if (c === '\n') {
+      row.push(field);
+      field = '';
+      rows.push(row);
+      row = [];
+    } else if (c === '\r') {
+      if (input[i + 1] !== '\n') {
+        row.push(field);
+        field = '';
+        rows.push(row);
+        row = [];
+      }
+      // \r\n: swallow the \r, the \n branch closes the row
+    } else {
+      field += c;
+    }
+  }
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows.filter((r) => r.some((cell) => cell.trim() !== ''));
+}
+
+function truncate(value: string, max: number): string {
+  return value.length > max ? `${value.slice(0, max)}…` : value;
+}
+
+function autoMapColumns(headers: string[], firstRow: string[] | undefined): ColumnMapping[] {
+  const used = new Set<FieldKey>();
+  return headers.map((h, i) => {
+    const norm = h.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const candidate = HEADER_ALIASES[norm] as FieldKey | undefined;
+    const field = candidate && !used.has(candidate) ? candidate : null;
+    if (field) used.add(field);
+    const sampleRaw = (firstRow?.[i] ?? '').trim();
+    return {
+      csvCol: h.trim() || `column_${i + 1}`,
+      sample: sampleRaw ? `"${truncate(sampleRaw, 28)}"` : '',
+      field,
+    };
+  });
+}
+
+/** undefined = column absent/blank, null = present but invalid. */
+function parseIntField(value: string, min: number): number | null | undefined {
+  if (!value) return undefined;
+  if (!/^\d{1,10}$/.test(value)) return null;
+  const n = parseInt(value, 10);
+  if (n < min || n > MAX_INT) return null;
+  return n;
+}
+
+function isValidUrl(value: string): boolean {
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Turn parsed CSV cells into API rows using the column mapping. Rows that
+ * fail the shape rules (mirroring the route's Zod) become client-side
+ * errors and are never sent — the server handles dupes/collisions/categories.
+ */
+function buildRows(csv: CsvData, mappings: ColumnMapping[]): PreparedData {
+  const fieldIdx = new Map<FieldKey, number>();
+  mappings.forEach((m, i) => {
+    if (m.field && !fieldIdx.has(m.field)) fieldIdx.set(m.field, i);
+  });
+  const get = (cells: string[], f: FieldKey): string => {
+    const idx = fieldIdx.get(f);
+    return idx === undefined ? '' : (cells[idx] ?? '').trim();
+  };
+
+  const sent: SentRow[] = [];
+  const clientErrors: RowIssue[] = [];
+  const displayRows: DisplayRow[] = [];
+
+  csv.rows.forEach((cells, i) => {
+    const csvRowNum = i + 2; // 1-based, +1 for the header line
+    const name = get(cells, 'name');
+    const sku = get(cells, 'sku');
+    const price = get(cells, 'price').replace(/[$,\s]/g, '');
+    const upc = get(cells, 'upc');
+    const brand = get(cells, 'brand');
+    const category = get(cells, 'category');
+    const description = get(cells, 'description');
+    const imageUrl = get(cells, 'imageUrl');
+    const ageRaw = get(cells, 'ageRestricted').toLowerCase();
+
+    displayRows.push({
+      csvRowNum,
+      name: name || '—',
+      sku,
+      brand,
+      category,
+      price: get(cells, 'price'),
+      stock: get(cells, 'stock'),
+      moq: get(cells, 'moq'),
+    });
+
+    let reason: string | null = null;
+    const setReason = (msg: string) => {
+      if (!reason) reason = msg;
+    };
+
+    if (!name) setReason('Missing product name');
+    else if (name.length > 200) setReason('Product name is longer than 200 characters');
+    if (!sku) setReason('Missing SKU');
+    else if (sku.length > 64) setReason('SKU is longer than 64 characters');
+    if (!PRICE_RE.test(price)) setReason('Invalid price — use a positive amount like 12.50');
+    if (upc.length > 32) setReason('UPC is longer than 32 characters');
+    if (brand.length > 80) setReason('Brand is longer than 80 characters');
+    if (category.length > 80) setReason('Category is longer than 80 characters');
+    if (description.length > 2000) setReason('Description is longer than 2,000 characters');
+
+    const row: ApiRow = { name, sku, price };
+    if (upc) row.upc = upc;
+    if (brand) row.brand = brand;
+    if (category) row.category = category;
+    if (description) row.description = description;
+
+    const caseQty = parseIntField(get(cells, 'caseQty'), 1);
+    if (caseQty === null) setReason('Invalid case quantity — use a whole number of 1 or more');
+    else if (caseQty !== undefined) row.caseQty = caseQty;
+
+    const moq = parseIntField(get(cells, 'moq'), 1);
+    if (moq === null) setReason('Invalid minimum order quantity — use a whole number of 1 or more');
+    else if (moq !== undefined) row.moq = moq;
+
+    const stock = parseIntField(get(cells, 'stock'), 0);
+    if (stock === null) setReason('Invalid stock quantity — use a whole number of 0 or more');
+    else if (stock !== undefined) row.stock = stock;
+
+    if (imageUrl) {
+      if (isValidUrl(imageUrl)) row.imageUrl = imageUrl;
+      else setReason('Invalid image URL');
+    }
+
+    if (ageRaw) {
+      if (['yes', 'y', 'true', '1'].includes(ageRaw)) row.ageRestricted = true;
+      else if (['no', 'n', 'false', '0'].includes(ageRaw)) row.ageRestricted = false;
+      else setReason('Invalid age-restricted value — use yes or no');
+    }
+
+    if (reason) clientErrors.push({ csvRowNum, sku, reason });
+    else sent.push({ row, csvRowNum });
+  });
+
+  return { sent, clientErrors, displayRows, totalRows: csv.rows.length };
+}
+
+async function postImport<T>(dryRun: boolean, rows: ApiRow[]): Promise<T> {
+  const res = await fetch('/api/products/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dryRun, rows }),
+  });
+  if (!res.ok) {
+    let message = `Import request failed (${res.status})`;
+    try {
+      const data = (await res.json()) as { error?: { message?: string } };
+      if (data.error?.message) message = data.error.message;
+    } catch {
+      // keep the default message
+    }
+    throw new Error(message);
+  }
+  return (await res.json()) as T;
+}
+
+function downloadTextFile(filename: string, contents: string, mime: string) {
+  const blob = new Blob([contents], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
 export function CsvImportWizard() {
   const [step, setStep] = useState<Step>('upload');
   const [file, setFile] = useState<File | null>(null);
-  const [importProgress, setImportProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+
+  const [csv, setCsv] = useState<CsvData | null>(null);
+  const [mappings, setMappings] = useState<ColumnMapping[]>([]);
+  const [prepared, setPrepared] = useState<PreparedData | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [preview, setPreview] = useState<PreviewData | null>(null);
+  const [commitResult, setCommitResult] = useState<CommitData | null>(null);
+
+  const clearFile = () => {
+    setFile(null);
+    setCsv(null);
+    setMappings([]);
+    setPrepared(null);
+    setPreview(null);
+    setCommitResult(null);
+  };
 
   const handleFile = useCallback((f: File) => {
     if (!f.name.toLowerCase().endsWith('.csv')) {
@@ -146,43 +426,106 @@ export function CsvImportWizard() {
       return;
     }
     if (f.size > 50 * 1024 * 1024) {
-      setError('File too large. Max 50 MB / ~50,000 rows.');
+      setError('File too large. Max 50 MB.');
       return;
     }
-    setError(null);
-    setFile(f);
+    f.text()
+      .then((text) => {
+        const parsed = parseCsv(text);
+        if (parsed.length < 2) {
+          setError('CSV needs a header row plus at least one data row.');
+          return;
+        }
+        const [headers, ...rows] = parsed;
+        if (rows.length > MAX_ROWS) {
+          setError(`Too many rows — max ${MAX_ROWS.toLocaleString()} per import.`);
+          return;
+        }
+        setError(null);
+        setFile(f);
+        setCsv({ headers, rows });
+        setMappings(autoMapColumns(headers, rows[0]));
+        setPrepared(null);
+        setPreview(null);
+        setCommitResult(null);
+      })
+      .catch(() => setError('Could not read the file. Is it a plain-text CSV?'));
   }, []);
 
   const onContinueFromUpload = () => {
-    if (!file) return;
+    if (!file || !csv) return;
     setStep('map');
   };
 
+  const runPreview = (p: PreparedData) => {
+    setPreviewLoading(true);
+    setError(null);
+    const mapIssue = (issue: ServerIssue): RowIssue => ({
+      csvRowNum: p.sent[issue.rowIndex]?.csvRowNum ?? -1,
+      sku: issue.sku,
+      reason: issue.reason,
+    });
+    postImport<PreviewResponse>(true, p.sent.map((s) => s.row))
+      .then((res) => {
+        setPreview({
+          errors: res.errors.map(mapIssue),
+          warnings: res.warnings.map(mapIssue),
+        });
+      })
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setPreviewLoading(false));
+  };
+
+  const onContinueFromMap = () => {
+    if (!csv) return;
+    const p = buildRows(csv, mappings);
+    setPrepared(p);
+    setPreview(null);
+    setStep('preview');
+    runPreview(p);
+  };
+
+  const combinedErrors: RowIssue[] = prepared
+    ? [...prepared.clientErrors, ...(preview?.errors ?? [])]
+    : [];
+  const warnings: RowIssue[] = preview?.warnings ?? [];
+  const totalRows = prepared?.totalRows ?? 0;
+  const validCount = prepared && preview ? totalRows - combinedErrors.length : 0;
+
   const onCommit = () => {
+    if (!prepared || !preview) return;
     setStep('importing');
-    // Simulated progress — real impl would POST to /api/products/import and poll job status.
-    setImportProgress(0);
-    const interval = setInterval(() => {
-      setImportProgress((p) => {
-        if (p >= 100) {
-          clearInterval(interval);
-          setStep('done');
-          return 100;
-        }
-        return p + 4;
+    setError(null);
+    const p = prepared;
+    const mapIssue = (issue: ServerIssue): RowIssue => ({
+      csvRowNum: p.sent[issue.rowIndex]?.csvRowNum ?? -1,
+      sku: issue.sku,
+      reason: issue.reason,
+    });
+    postImport<CommitResponse>(false, p.sent.map((s) => s.row))
+      .then((res) => {
+        setCommitResult({
+          created: res.created,
+          skipped: [...p.clientErrors, ...res.skipped.map(mapIssue)],
+        });
+        setStep('done');
+      })
+      .catch((e: Error) => {
+        setError(e.message);
+        setStep('preview');
       });
-    }, 80);
   };
 
   return (
     <div className="space-y-6">
       <Stepper step={step} />
 
-      {error && <ErrorBanner title="Upload failed" message={error} />}
+      {error && <ErrorBanner title="Import problem" message={error} />}
 
       {step === 'upload' && (
         <UploadStep
           file={file}
+          rowCount={csv?.rows.length ?? null}
           dragOver={dragOver}
           onDrop={(f) => {
             setDragOver(false);
@@ -191,35 +534,56 @@ export function CsvImportWizard() {
           onDragOver={() => setDragOver(true)}
           onDragLeave={() => setDragOver(false)}
           onPick={() => fileInputRef.current?.click()}
-          onClear={() => setFile(null)}
+          onClear={clearFile}
           fileInputRef={fileInputRef}
           onFileChange={handleFile}
           onContinue={onContinueFromUpload}
         />
       )}
 
-      {step === 'map' && (
+      {step === 'map' && csv && (
         <MapStep
           file={file}
+          rowCount={csv.rows.length}
+          colCount={csv.headers.length}
+          mappings={mappings}
           onBack={() => setStep('upload')}
-          onContinue={() => setStep('preview')}
+          onReplaceFile={() => {
+            clearFile();
+            setStep('upload');
+          }}
+          onContinue={onContinueFromMap}
         />
       )}
 
-      {step === 'preview' && (
+      {step === 'preview' && prepared && (
         <PreviewStep
+          loading={previewLoading}
+          ready={preview !== null}
+          totalRows={totalRows}
+          validCount={validCount}
+          errors={combinedErrors}
+          warnings={warnings}
+          displayRows={prepared.displayRows}
           onBack={() => setStep('map')}
           onCommit={onCommit}
         />
       )}
 
-      {step === 'importing' && <ImportingStep progress={importProgress} />}
+      {step === 'importing' && <ImportingStep rowCount={prepared?.sent.length ?? 0} />}
 
-      {step === 'done' && <DoneStep onReset={() => {
-        setStep('upload');
-        setFile(null);
-        setImportProgress(0);
-      }} />}
+      {step === 'done' && commitResult && (
+        <DoneStep
+          result={commitResult}
+          warningsCount={warnings.length}
+          totalRows={totalRows}
+          displayRows={prepared?.displayRows ?? []}
+          onReset={() => {
+            clearFile();
+            setStep('upload');
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -283,6 +647,7 @@ function Stepper({ step }: { step: Step }) {
 
 function UploadStep({
   file,
+  rowCount,
   dragOver,
   onDrop,
   onDragOver,
@@ -294,6 +659,7 @@ function UploadStep({
   onContinue,
 }: {
   file: File | null;
+  rowCount: number | null;
   dragOver: boolean;
   onDrop: (f: File | null) => void;
   onDragOver: () => void;
@@ -338,7 +704,7 @@ function UploadStep({
           <UploadCloud className="h-7 w-7" />
         </div>
         <p className="text-base font-semibold text-dark">Drop your catalog CSV here</p>
-        <p className="text-xs text-gray-500 mt-1">Up to 50,000 rows · UTF-8 · headers in row 1</p>
+        <p className="text-xs text-gray-500 mt-1">Up to 5,000 rows · UTF-8 · headers in row 1</p>
         <div className="my-4 inline-flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-widest text-gray-400 before:content-[''] before:w-10 before:h-px before:bg-gray-200 after:content-[''] after:w-10 after:h-px after:bg-gray-200">
           <span>or</span>
         </div>
@@ -364,6 +730,7 @@ function UploadStep({
             <p className="text-sm font-semibold truncate">{file.name}</p>
             <p className="text-[11px] font-mono text-gray-500 mt-0.5">
               {(file.size / 1024).toFixed(0)} KB
+              {rowCount !== null && ` · ${rowCount.toLocaleString()} rows detected`}
             </p>
           </div>
           <button
@@ -382,7 +749,7 @@ function UploadStep({
           icon={<FileDown className="h-4 w-4" />}
           tone="teal"
           title="Start from a template"
-          description="Download our CSV template with all 14 fields, sample rows, and required-column markers."
+          description="Download our CSV template with all 12 fields, sample rows, and required-column markers."
           linkLabel="Download wholesalehub-catalog-template.csv"
           href="/api/products/import/template"
         />
@@ -403,7 +770,7 @@ function UploadStep({
             type="button"
             variant="primary"
             size="md"
-            disabled={!file}
+            disabled={!file || rowCount === null}
             rightIcon={<ArrowRight className="h-3.5 w-3.5" />}
             onClick={onContinue}
           >
@@ -417,14 +784,31 @@ function UploadStep({
 
 function MapStep({
   file,
+  rowCount,
+  colCount,
+  mappings,
   onBack,
+  onReplaceFile,
   onContinue,
 }: {
   file: File | null;
+  rowCount: number;
+  colCount: number;
+  mappings: ColumnMapping[];
   onBack: () => void;
+  onReplaceFile: () => void;
   onContinue: () => void;
 }) {
-  const unmapped = SAMPLE_MAPPING.filter((m) => m.status === 'unmapped').length;
+  const mappedCount = mappings.filter((m) => m.field !== null).length;
+  const skippedCount = mappings.length - mappedCount;
+  const requiredMissing = REQUIRED_FIELDS.filter(
+    (f) => !mappings.some((m) => m.field === f),
+  );
+
+  const statusFor = (m: ColumnMapping): 'required' | 'mapped' | 'skipped' => {
+    if (m.field === null) return 'skipped';
+    return REQUIRED_FIELDS.includes(m.field) ? 'required' : 'mapped';
+  };
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -436,18 +820,33 @@ function MapStep({
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold truncate">{file.name}</p>
             <p className="text-[11px] font-mono text-gray-500 mt-0.5">
-              428 rows · 14 columns · {(file.size / 1024).toFixed(0)} KB
+              {rowCount.toLocaleString()} rows · {colCount} columns · {(file.size / 1024).toFixed(0)} KB
             </p>
           </div>
-          <button type="button" className="text-xs text-brand-teal hover:text-brand-teal-dark font-medium">
+          <button
+            type="button"
+            onClick={onReplaceFile}
+            className="text-xs text-brand-teal hover:text-brand-teal-dark font-medium"
+          >
             Replace file
           </button>
         </div>
       )}
 
       <p className="text-sm text-gray-500 mb-4">
-        We auto-matched 12 of 14 columns. Review and fix anything that&apos;s not quite right.
+        We auto-matched {mappedCount} of {mappings.length} columns. Columns we couldn&apos;t
+        match are skipped and never written to your catalog.
       </p>
+
+      {requiredMissing.length > 0 && (
+        <ErrorBanner
+          className="mb-4"
+          title="Missing required columns"
+          message={`Your CSV needs a column for: ${requiredMissing
+            .map((f) => FIELD_LABELS[f])
+            .join(', ')}. Rename the headers in your file and re-upload.`}
+        />
+      )}
 
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         <div className="grid grid-cols-[1fr_30px_1fr_100px] gap-3.5 bg-gray-50 px-5 py-3 border-b border-gray-200 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
@@ -456,41 +855,43 @@ function MapStep({
           <div>WholesaleHub field</div>
           <div>Status</div>
         </div>
-        {SAMPLE_MAPPING.map((m) => (
-          <div
-            key={m.csvCol}
-            className="grid grid-cols-[1fr_30px_1fr_100px] gap-3.5 px-5 py-3 border-b border-gray-100 last:border-0 items-center"
-          >
-            <div className="flex items-center gap-2 text-sm">
-              <span className="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-700">
-                {m.csvCol}
-              </span>
-              <span className="text-xs text-gray-500 font-mono truncate">{m.sample}</span>
-            </div>
-            <ArrowRight className="h-3.5 w-3.5 text-gray-400" />
+        {mappings.map((m, idx) => {
+          const status = statusFor(m);
+          return (
             <div
-              className={cn(
-                'border rounded-lg px-2.5 py-2 text-xs flex items-center justify-between',
-                m.status === 'required' && 'border-success bg-success/[0.05]',
-                m.status === 'mapped' && 'border-brand-blue/30 bg-brand-blue/[0.03]',
-                m.status === 'unmapped' && 'border-dashed border-gray-300 text-gray-400',
-                m.status === 'skipped' && 'border-gray-200 text-gray-400',
-              )}
+              key={`${m.csvCol}-${idx}`}
+              className="grid grid-cols-[1fr_30px_1fr_100px] gap-3.5 px-5 py-3 border-b border-gray-100 last:border-0 items-center"
             >
-              {m.target}
-              <ChevronDown className="h-3 w-3 text-gray-400" />
+              <div className="flex items-center gap-2 text-sm">
+                <span className="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-700">
+                  {m.csvCol}
+                </span>
+                <span className="text-xs text-gray-500 font-mono truncate">{m.sample}</span>
+              </div>
+              <ArrowRight className="h-3.5 w-3.5 text-gray-400" />
+              <div
+                className={cn(
+                  'border rounded-lg px-2.5 py-2 text-xs flex items-center justify-between',
+                  status === 'required' && 'border-success bg-success/[0.05]',
+                  status === 'mapped' && 'border-brand-blue/30 bg-brand-blue/[0.03]',
+                  status === 'skipped' && 'border-gray-200 text-gray-400',
+                )}
+              >
+                {m.field ? FIELD_LABELS[m.field] : '— Skip column —'}
+                <ChevronDown className="h-3 w-3 text-gray-400" />
+              </div>
+              <MapStatusBadge status={status} />
             </div>
-            <MapStatusBadge status={m.status} />
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      {unmapped > 0 && (
+      {skippedCount > 0 && (
         <div className="mt-3 flex items-start gap-2.5 bg-status-info/[0.08] border border-status-info/20 rounded-lg px-4 py-3 text-sm">
           <Info className="h-4 w-4 text-status-info flex-shrink-0 mt-0.5" />
           <p className="text-dark">
-            {unmapped} column unmapped. You can map it now or finish without it. Skipped columns
-            are never written to your catalog.
+            {skippedCount} column{skippedCount === 1 ? '' : 's'} didn&apos;t match a WholesaleHub
+            field and will be skipped. Skipped columns are never written to your catalog.
           </p>
         </div>
       )}
@@ -499,7 +900,10 @@ function MapStep({
         leftText={
           <>
             <strong className="text-dark">{file?.name ?? 'file.csv'}</strong>
-            <span className="text-gray-500"> · 428 rows ready to preview</span>
+            <span className="text-gray-500">
+              {' '}
+              · {rowCount.toLocaleString()} rows ready to preview
+            </span>
           </>
         }
         actions={
@@ -517,6 +921,7 @@ function MapStep({
               type="button"
               variant="primary"
               size="md"
+              disabled={requiredMissing.length > 0}
               rightIcon={<ArrowRight className="h-3.5 w-3.5" />}
               onClick={onContinue}
             >
@@ -529,113 +934,178 @@ function MapStep({
   );
 }
 
-function PreviewStep({ onBack, onCommit }: { onBack: () => void; onCommit: () => void }) {
+function PreviewStep({
+  loading,
+  ready,
+  totalRows,
+  validCount,
+  errors,
+  warnings,
+  displayRows,
+  onBack,
+  onCommit,
+}: {
+  loading: boolean;
+  ready: boolean;
+  totalRows: number;
+  validCount: number;
+  errors: RowIssue[];
+  warnings: RowIssue[];
+  displayRows: DisplayRow[];
+  onBack: () => void;
+  onCommit: () => void;
+}) {
   const [filter, setFilter] = useState<'all' | 'errors' | 'warnings' | 'valid'>('errors');
+
+  const errorByRow = new Map(errors.map((e) => [e.csvRowNum, e.reason]));
+  const warnByRow = new Map(warnings.map((w) => [w.csvRowNum, w.reason]));
+
+  const rows = displayRows.map((r) => {
+    const err = errorByRow.get(r.csvRowNum);
+    const warn = warnByRow.get(r.csvRowNum);
+    return {
+      ...r,
+      status: err ? ('error' as const) : warn ? ('warning' as const) : ('valid' as const),
+      message: err ?? warn,
+    };
+  });
+  const filtered =
+    filter === 'all'
+      ? rows
+      : rows.filter((r) =>
+          filter === 'errors'
+            ? r.status === 'error'
+            : filter === 'warnings'
+              ? r.status === 'warning'
+              : r.status === 'valid',
+        );
+  const shown = filtered.slice(0, MAX_DISPLAY_ROWS);
 
   return (
     <div className="max-w-3xl mx-auto">
       <p className="text-sm text-gray-500 mb-4">
-        Fix what you can inline. We&apos;ll skip rows that still have errors when you commit —
-        they&apos;ll appear in the result report.
+        We validated every row against your catalog. Rows that still have errors when you
+        commit are skipped and reported — fix them in your CSV and re-upload.
       </p>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-4">
-        <SummaryStat label="Valid" value={412} sub="will be created" tone="success" />
-        <SummaryStat label="Warnings" value={11} sub="imports w/ caveats" tone="warning" />
-        <SummaryStat label="Errors" value={5} sub="need fix or will skip" tone="error" />
-        <SummaryStat label="Total rows" value={428} sub="in CSV" />
-      </div>
+      {loading && (
+        <div className="flex items-center gap-3.5 bg-white border border-brand-blue/30 rounded-xl px-5 py-4">
+          <Loader2 className="h-6 w-6 text-brand-blue animate-spin flex-shrink-0" />
+          <p className="text-sm font-semibold">
+            Validating {totalRows.toLocaleString()} rows against your catalog…
+          </p>
+        </div>
+      )}
 
-      <div className="flex gap-1.5 mb-3 items-center flex-wrap">
-        <FilterPill label="All" count={428} active={filter === 'all'} onClick={() => setFilter('all')} />
-        <FilterPill label="Errors" count={5} active={filter === 'errors'} onClick={() => setFilter('errors')} />
-        <FilterPill label="Warnings" count={11} active={filter === 'warnings'} onClick={() => setFilter('warnings')} />
-        <FilterPill label="Valid" count={412} active={filter === 'valid'} onClick={() => setFilter('valid')} />
-        <span className="ml-auto text-xs text-gray-500">
-          Showing 5 of 428 · grouped by issue
-        </span>
-      </div>
+      {!loading && !ready && (
+        <div className="bg-white border border-gray-200 rounded-xl px-5 py-4 text-sm text-gray-500">
+          Validation didn&apos;t complete. Go back to mapping and try again.
+        </div>
+      )}
 
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50">
-            <tr className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-              <th className="text-left px-3 py-2.5 w-10">#</th>
-              <th className="text-left px-3 py-2.5">Name</th>
-              <th className="text-left px-3 py-2.5">SKU</th>
-              <th className="text-left px-3 py-2.5">Brand</th>
-              <th className="text-left px-3 py-2.5">Category</th>
-              <th className="text-left px-3 py-2.5">Price</th>
-              <th className="text-left px-3 py-2.5">Stock</th>
-              <th className="text-left px-3 py-2.5">MOQ</th>
-            </tr>
-          </thead>
-          <tbody>
-            {SAMPLE_ERRORS.map((row) => (
-              <tr key={row.rowNum} className="bg-status-error/[0.04] border-t border-gray-100">
-                <td className="px-3 py-3 align-top">
-                  <span className="font-mono text-[11px] text-gray-400">{row.rowNum}</span>
-                </td>
-                <td className="px-3 py-3 align-top">
-                  <p className="text-sm">{row.name}</p>
-                  <p className="flex items-start gap-1.5 mt-1 text-xs text-status-error font-medium">
-                    <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
-                    <span>{row.errorMessage}</span>
-                  </p>
-                </td>
-                <td className="px-3 py-3 align-top">
-                  {row.sku ? (
-                    <span className="font-mono text-xs text-gray-700">{row.sku}</span>
-                  ) : (
-                    <input
-                      placeholder="Enter SKU…"
-                      className="w-full px-2 py-1 border border-status-error rounded text-xs font-mono"
-                    />
-                  )}
-                </td>
-                <td className="px-3 py-3 align-top text-sm">{row.brand}</td>
-                <td className="px-3 py-3 align-top text-sm">
-                  {row.category === 'Vapes' ? (
-                    <input
-                      defaultValue={row.category}
-                      className="w-full px-2 py-1 border border-status-error rounded text-xs"
-                    />
-                  ) : (
-                    row.category
-                  )}
-                </td>
-                <td className="px-3 py-3 align-top">
-                  {row.price.startsWith('-') ? (
-                    <input
-                      defaultValue={row.price}
-                      className="w-full px-2 py-1 border border-status-error rounded text-xs font-mono text-status-error"
-                    />
-                  ) : (
-                    <span className="font-mono font-semibold">{row.price}</span>
-                  )}
-                </td>
-                <td className="px-3 py-3 align-top text-sm font-mono">{row.stock}</td>
-                <td className="px-3 py-3 align-top text-sm font-mono">{row.moq}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {!loading && ready && (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-4">
+            <SummaryStat label="Valid" value={validCount} sub="will be created" tone="success" />
+            <SummaryStat label="Warnings" value={warnings.length} sub="imports w/ caveats" tone="warning" />
+            <SummaryStat label="Errors" value={errors.length} sub="need fix or will skip" tone="error" />
+            <SummaryStat label="Total rows" value={totalRows} sub="in CSV" />
+          </div>
 
-      <p className="mt-3 flex items-center gap-2 text-xs text-gray-500">
-        <Lightbulb className="h-3.5 w-3.5 text-status-warning" />
-        Tip: fix errors here to maximize your import. Anything still red when you commit will be
-        reported and skipped.
-      </p>
+          <div className="flex gap-1.5 mb-3 items-center flex-wrap">
+            <FilterPill label="All" count={totalRows} active={filter === 'all'} onClick={() => setFilter('all')} />
+            <FilterPill label="Errors" count={errors.length} active={filter === 'errors'} onClick={() => setFilter('errors')} />
+            <FilterPill label="Warnings" count={warnings.length} active={filter === 'warnings'} onClick={() => setFilter('warnings')} />
+            <FilterPill label="Valid" count={validCount} active={filter === 'valid'} onClick={() => setFilter('valid')} />
+            <span className="ml-auto text-xs text-gray-500">
+              Showing {shown.length} of {filtered.length} rows
+            </span>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                  <th className="text-left px-3 py-2.5 w-10">#</th>
+                  <th className="text-left px-3 py-2.5">Name</th>
+                  <th className="text-left px-3 py-2.5">SKU</th>
+                  <th className="text-left px-3 py-2.5">Brand</th>
+                  <th className="text-left px-3 py-2.5">Category</th>
+                  <th className="text-left px-3 py-2.5">Price</th>
+                  <th className="text-left px-3 py-2.5">Stock</th>
+                  <th className="text-left px-3 py-2.5">MOQ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.length === 0 && (
+                  <tr className="border-t border-gray-100">
+                    <td colSpan={8} className="px-3 py-6 text-center text-sm text-gray-500">
+                      No rows in this view.
+                    </td>
+                  </tr>
+                )}
+                {shown.map((row) => (
+                  <tr
+                    key={row.csvRowNum}
+                    className={cn(
+                      'border-t border-gray-100',
+                      row.status === 'error' && 'bg-status-error/[0.04]',
+                      row.status === 'warning' && 'bg-status-warning/[0.04]',
+                    )}
+                  >
+                    <td className="px-3 py-3 align-top">
+                      <span className="font-mono text-[11px] text-gray-400">{row.csvRowNum}</span>
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <p className="text-sm">{row.name}</p>
+                      {row.message && (
+                        <p
+                          className={cn(
+                            'flex items-start gap-1.5 mt-1 text-xs font-medium',
+                            row.status === 'error' ? 'text-status-error' : 'text-status-warning',
+                          )}
+                        >
+                          {row.status === 'error' ? (
+                            <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                          ) : (
+                            <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                          )}
+                          <span>{row.message}</span>
+                        </p>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <span className="font-mono text-xs text-gray-700">{row.sku || '—'}</span>
+                    </td>
+                    <td className="px-3 py-3 align-top text-sm">{row.brand || '—'}</td>
+                    <td className="px-3 py-3 align-top text-sm">{row.category || '—'}</td>
+                    <td className="px-3 py-3 align-top">
+                      <span className="font-mono font-semibold">{row.price || '—'}</span>
+                    </td>
+                    <td className="px-3 py-3 align-top text-sm font-mono">{row.stock || '—'}</td>
+                    <td className="px-3 py-3 align-top text-sm font-mono">{row.moq || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="mt-3 flex items-center gap-2 text-xs text-gray-500">
+            <Lightbulb className="h-3.5 w-3.5 text-status-warning" />
+            Tip: fix errors in your CSV and re-upload to maximize your import. Anything still
+            red when you commit will be reported and skipped.
+          </p>
+        </>
+      )}
 
       <WizardFoot
         leftText={
           <>
-            <strong className="text-success">412 valid</strong>
+            <strong className="text-success">{validCount} valid</strong>
             <span className="text-gray-500"> · </span>
-            <strong className="text-status-warning">11 warnings</strong>
+            <strong className="text-status-warning">{warnings.length} warnings</strong>
             <span className="text-gray-500"> · </span>
-            <strong className="text-status-error">5 errors</strong>
+            <strong className="text-status-error">{errors.length} errors</strong>
           </>
         }
         actions={
@@ -653,10 +1123,11 @@ function PreviewStep({ onBack, onCommit }: { onBack: () => void; onCommit: () =>
               type="button"
               variant="primary"
               size="md"
+              disabled={loading || !ready || validCount === 0}
               rightIcon={<Check className="h-3.5 w-3.5" />}
               onClick={onCommit}
             >
-              Commit 412 valid
+              Commit {validCount} valid
             </Button>
           </>
         }
@@ -665,40 +1136,88 @@ function PreviewStep({ onBack, onCommit }: { onBack: () => void; onCommit: () =>
   );
 }
 
-function ImportingStep({ progress }: { progress: number }) {
+function ImportingStep({ rowCount }: { rowCount: number }) {
   return (
     <div className="max-w-3xl mx-auto">
       <p className="text-sm text-gray-500 mb-4">
-        Hang tight — this typically takes about 1 minute per 1,000 rows. You can navigate away
-        and we&apos;ll keep going.
+        Hang tight — products and your pricing are written together in a single transaction.
       </p>
       <div className="flex items-center gap-3.5 bg-white border border-brand-blue/30 rounded-xl px-5 py-4 mb-5">
         <Loader2 className="h-7 w-7 text-brand-blue animate-spin flex-shrink-0" />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold">
-            Creating products · {Math.round((progress / 100) * 412)} of 412 done
+            Creating products · {rowCount.toLocaleString()} rows submitted
           </p>
           <p className="text-[11px] font-mono text-gray-500 mt-0.5">
-            Writing image URLs · validating UPCs · Job ID #imp_4f8a3b
+            Rows with unresolved errors are skipped and reported
           </p>
         </div>
-        <span className="font-mono text-lg font-bold text-brand-blue">{progress}%</span>
       </div>
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         <div className="px-5 py-3.5 border-b border-gray-200 text-sm font-semibold">Activity</div>
         <ul className="py-1.5">
-          <ActivityRow status="done" label="Validating row schema" timing="12s" />
-          <ActivityRow status="done" label="Resolving categories & brands" timing="4s" />
-          <ActivityRow status="active" label="Creating products & price tiers" timing="in progress" />
-          <ActivityRow status="queued" label="Generating embeddings for search" timing="queued" />
-          <ActivityRow status="queued" label="Indexing for autocomplete" timing="queued" />
+          <ActivityRow status="done" label="Validating row schema" timing="done" />
+          <ActivityRow status="done" label="Resolving categories" timing="done" />
+          <ActivityRow status="active" label="Creating products & pricing" timing="in progress" />
         </ul>
       </div>
     </div>
   );
 }
 
-function DoneStep({ onReset }: { onReset: () => void }) {
+function reasonIcon(reason: string): React.ReactNode {
+  const r = reason.toLowerCase();
+  if (r.includes('duplicate')) return <Copy className="h-3.5 w-3.5" />;
+  if (r.includes('price')) return <DollarSign className="h-3.5 w-3.5" />;
+  if (r.includes('category')) return <FolderX className="h-3.5 w-3.5" />;
+  if (r.includes('image')) return <ImageOff className="h-3.5 w-3.5" />;
+  if (r.includes('missing')) return <XCircle className="h-3.5 w-3.5" />;
+  return <X className="h-3.5 w-3.5" />;
+}
+
+function DoneStep({
+  result,
+  warningsCount,
+  totalRows,
+  displayRows,
+  onReset,
+}: {
+  result: CommitData;
+  warningsCount: number;
+  totalRows: number;
+  displayRows: DisplayRow[];
+  onReset: () => void;
+}) {
+  const nameByRow = new Map(displayRows.map((r) => [r.csvRowNum, r.name]));
+  const skipped = [...result.skipped].sort((a, b) => a.csvRowNum - b.csvRowNum);
+
+  const downloadErrorCsv = () => {
+    const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    const lines = [
+      'row,sku,reason',
+      ...skipped.map((s) => `${s.csvRowNum},${esc(s.sku)},${esc(s.reason)}`),
+    ];
+    downloadTextFile('import-errors.csv', lines.join('\n'), 'text/csv');
+  };
+
+  const downloadReceipt = () => {
+    downloadTextFile(
+      'import-receipt.json',
+      JSON.stringify(
+        {
+          importedAt: new Date().toISOString(),
+          totalRows,
+          created: result.created,
+          warnings: warningsCount,
+          skipped,
+        },
+        null,
+        2,
+      ),
+      'application/json',
+    );
+  };
+
   return (
     <div className="max-w-3xl mx-auto">
       <div className="bg-white border border-gray-200 rounded-2xl p-9 text-center mb-4">
@@ -707,12 +1226,14 @@ function DoneStep({ onReset }: { onReset: () => void }) {
         </div>
         <h2 className="text-2xl font-bold tracking-tight">Import complete</h2>
         <p className="text-sm text-gray-500 mt-1.5">
-          412 of 417 products are live in your catalog. 5 rows were skipped — see below.
+          {result.created.toLocaleString()} of {totalRows.toLocaleString()} rows are live in
+          your catalog.
+          {skipped.length > 0 && ` ${skipped.length} rows were skipped — see below.`}
         </p>
         <div className="grid grid-cols-3 gap-3.5 mt-6 max-w-md mx-auto">
-          <ResultStat label="Created" value={412} tone="success" />
-          <ResultStat label="With warnings" value={11} tone="warning" />
-          <ResultStat label="Skipped" value={5} tone="error" />
+          <ResultStat label="Created" value={result.created} tone="success" />
+          <ResultStat label="With warnings" value={warningsCount} tone="warning" />
+          <ResultStat label="Skipped" value={skipped.length} tone="error" />
         </div>
         <div className="mt-6 flex flex-wrap gap-2 justify-center">
           <Button
@@ -722,7 +1243,7 @@ function DoneStep({ onReset }: { onReset: () => void }) {
             leftIcon={<ExternalLink className="h-3.5 w-3.5" />}
             onClick={() => (window.location.href = '/products')}
           >
-            View 412 new products
+            View {result.created.toLocaleString()} new products
           </Button>
           <Button
             type="button"
@@ -738,45 +1259,48 @@ function DoneStep({ onReset }: { onReset: () => void }) {
             variant="ghost"
             size="md"
             leftIcon={<Download className="h-3.5 w-3.5" />}
+            onClick={downloadReceipt}
           >
             Download import receipt
           </Button>
         </div>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-gray-200 flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4 text-status-warning" />
-          <p className="text-sm font-semibold">5 rows skipped</p>
-          <button className="ml-auto text-xs text-brand-teal hover:text-brand-teal-dark font-medium">
-            Download error CSV
-          </button>
-        </div>
-        {SAMPLE_ERRORS.map((row) => {
-          const reasons: Record<number, { icon: React.ReactNode; text: string }> = {
-            14: { icon: <Copy className="h-3.5 w-3.5" />, text: 'Duplicate SKU' },
-            87: { icon: <DollarSign className="h-3.5 w-3.5" />, text: 'Invalid price' },
-            142: { icon: <XCircle className="h-3.5 w-3.5" />, text: 'Missing SKU' },
-            203: { icon: <FolderX className="h-3.5 w-3.5" />, text: 'Unknown category' },
-            317: { icon: <ImageOff className="h-3.5 w-3.5" />, text: 'Image 404' },
-          };
-          const r = reasons[row.rowNum] ?? { icon: <X className="h-3.5 w-3.5" />, text: 'Error' };
-          return (
-            <div key={row.rowNum} className="flex items-center gap-3.5 px-5 py-3 border-b border-gray-100 last:border-0 text-sm">
-              <span className="font-mono text-[11px] text-gray-400 w-12">Row {row.rowNum}</span>
-              <span className="flex-1 truncate">{row.name}</span>
+      {skipped.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-gray-200 flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-status-warning" />
+            <p className="text-sm font-semibold">
+              {skipped.length} row{skipped.length === 1 ? '' : 's'} skipped
+            </p>
+            <button
+              type="button"
+              onClick={downloadErrorCsv}
+              className="ml-auto text-xs text-brand-teal hover:text-brand-teal-dark font-medium"
+            >
+              Download error CSV
+            </button>
+          </div>
+          {skipped.slice(0, MAX_DISPLAY_ROWS).map((s) => (
+            <div
+              key={s.csvRowNum}
+              className="flex items-center gap-3.5 px-5 py-3 border-b border-gray-100 last:border-0 text-sm"
+            >
+              <span className="font-mono text-[11px] text-gray-400 w-12">Row {s.csvRowNum}</span>
+              <span className="flex-1 truncate">{nameByRow.get(s.csvRowNum) ?? (s.sku || '—')}</span>
               <span className="text-xs text-status-warning inline-flex items-center gap-1.5">
-                {r.icon}
-                {r.text}
+                {reasonIcon(s.reason)}
+                {s.reason}
               </span>
             </div>
-          );
-        })}
-        <div className="px-5 py-3 bg-gray-50 border-t border-gray-200 flex items-center gap-2 text-sm text-gray-500">
-          <Lightbulb className="h-3.5 w-3.5 text-status-warning" />
-          Fix these in your CSV and re-upload — we&apos;ll only import the missing rows.
+          ))}
+          <div className="px-5 py-3 bg-gray-50 border-t border-gray-200 flex items-center gap-2 text-sm text-gray-500">
+            <Lightbulb className="h-3.5 w-3.5 text-status-warning" />
+            Fix these in your CSV and re-upload — rows already imported are skipped as
+            duplicates, so only the fixed rows land.
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -821,7 +1345,7 @@ function HelperCard({
   );
 }
 
-function MapStatusBadge({ status }: { status: MappingRow['status'] }) {
+function MapStatusBadge({ status }: { status: 'required' | 'mapped' | 'unmapped' | 'skipped' }) {
   const config = {
     required: { label: 'REQUIRED', tone: 'bg-success/10 text-success' },
     mapped: { label: 'MAPPED', tone: 'bg-brand-blue/10 text-brand-blue' },

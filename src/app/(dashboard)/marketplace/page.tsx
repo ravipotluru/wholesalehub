@@ -5,12 +5,10 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
 import { ProductCard } from '@/components/marketplace/ProductCard';
-import { ProductDetailModal } from '@/components/marketplace/ProductDetailModal';
 import { ProductCardSkeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorBanner } from '@/components/ui/ErrorBanner';
 import { Select } from '@/components/ui/Select';
-import { useUIStore } from '@/store/uiStore';
 import { debounce } from '@/lib/utils';
 
 const sortOptions = [
@@ -31,7 +29,6 @@ const stockOptions = [
 export default function MarketplacePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { productModalId, openProductModal, closeProductModal } = useUIStore();
 
   const [searchTerm, setSearchTerm] = useState(searchParams.get('q') || '');
   const [category, setCategory] = useState(searchParams.get('category') || '');
@@ -216,7 +213,7 @@ export default function MarketplacePage() {
                   <ProductCard
                     key={product.id as string}
                     product={product}
-                    onCompare={() => openProductModal(product.id as string)}
+                    onCompare={() => router.push(`/marketplace/${product.id as string}`)}
                   />
                 ))}
               </div>
@@ -258,14 +255,6 @@ export default function MarketplacePage() {
           )}
         </div>
       </div>
-
-      {/* Product Detail Modal */}
-      {productModalId && (
-        <ProductDetailModal
-          productId={productModalId}
-          onClose={closeProductModal}
-        />
-      )}
     </div>
   );
 }

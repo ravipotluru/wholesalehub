@@ -52,8 +52,8 @@ Status legend: ✅ shipped · 🟡 partial · 📋 planned (researched + specced
 |---|---|---|---|
 | CAT-1 | One product → many supplier listings; search results sorted by price ascending; cheapest carries BEST PRICE badge | P0 | ✅ |
 | CAT-2 | Hybrid search (keyword + pgvector semantic) with category/price/stock/rating filters | P0 | ✅ |
-| CAT-3 | Product detail page: supplier comparison, tier ladder, quantity-aware pricing, age-restriction gate | P0 | 🟡 in build (workflow `wf_ff30cf23`) |
-| CAT-4 | Bulk CSV import for sellers: parse → map → dry-run preview → transactional commit with per-row errors | P0 | 🟡 in build (same workflow; UI shipped earlier) |
+| CAT-3 | Product detail page: supplier comparison, tier ladder, quantity-aware pricing, age-restriction gate | P0 | ✅ 2026-07-26 — verifier CLEAN; pending CI + visual review |
+| CAT-4 | Bulk CSV import for sellers: parse → map → dry-run preview → transactional commit with per-row errors | P0 | ✅ 2026-07-26 — wired end-to-end; 5,000-row/request cap |
 | CAT-5 | Seller price-sheet ingestion from emailed PDF/Excel via extraction pipeline | P1 | 📋 researched (IDEAS #4) |
 | CAT-6 | True Landed Cost: per-state OTP/vape excise in price sort — BEST PRICE must rank landed cost, not raw wholesale | P1 | 📋 researched (IDEAS #6) — **known correctness issue in percent-of-wholesale states** |
 
@@ -166,5 +166,5 @@ international/tax-jurisdictions beyond US states · EDI X12 (adapter planned, P2
 ## 7. Release gates
 
 1. **Demo-ready** — ✅ reached 2026-05-06 (`290251d`): all 9 P0 screens wired, seeded, audited (30 findings fixed), full verification→checkout compliance loop.
-2. **Pilot (design partners)** — requires: CAT-3/CAT-4 (in build), NOTIF-3 (this commit), COMP-3 blob storage, green CI on Vercel.
+2. **Pilot (design partners)** — requires: COMP-3 blob storage + a green production build (CAT-3, CAT-4, NOTIF-3 ✅ shipped 2026-07-26; deploy runbook: `docs/DEPLOY.md`).
 3. **GA** — adds: ORD-8 payments, COMP-5 PACT export, SELL-1 onboarding, NFR-10 observability.

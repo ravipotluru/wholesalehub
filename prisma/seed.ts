@@ -6,6 +6,16 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Seeding database...');
 
+  // Idempotency guard: this seed runs on every Vercel build (see
+  // scripts/vercel-db-prepare.mjs). A non-empty user table means demo
+  // data is already in place — every create() below would collide on
+  // unique constraints, so bail out instead.
+  const existingUsers = await prisma.user.count();
+  if (existingUsers > 0) {
+    console.log(`Database already has ${existingUsers} users — skipping seed.`);
+    return;
+  }
+
   // ─── WHOLESALERS ───
   const wholesalers = await Promise.all([
     prisma.wholesaler.create({

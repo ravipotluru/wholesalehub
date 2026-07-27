@@ -27,7 +27,7 @@ Each feature moves through four gates. A gate is only checked here when it is **
 
 ## Feature ledger
 
-_Last updated: 2026-05-06 · commits through `522802b`_
+_Last updated: 2026-07-26 · commits through the product-detail + CSV-import + deploy-readiness commit (after `f314138`)_
 
 ### Buyer (retailer) experience
 
@@ -39,14 +39,14 @@ _Last updated: 2026-05-06 · commits through `522802b`_
 | Reorder from order detail | ✅ `5f95adf` | ✅ | ⏳ | ⏳ | Button wired to pre-existing `POST /api/orders/[id]/reorder`. |
 | **Smart Reorder w/ cross-supplier substitution** (`POST /api/orders/smart-reorder` + Orders-page button) | ✅ post-`210f50d` | ✅ | ⏳ | ⏳ | Promoted from IDEAS-2026-05 #1. Rebuilds 90-day basket; OOS lines swap to cheapest in-stock supplier; state-banned SKUs skipped with reason. Deterministic (no LLM) — Order Concierge layers on later. |
 | Age-restricted checkout gate | ✅ `522802b` | ✅ | ⏳ | ⏳ | `POST /api/orders` returns 403 `VERIFICATION_REQUIRED` unless retailer is VERIFIED. The compliance core. |
-| Product detail page (`/marketplace/[id]`) | ❌ | — | — | — | **Top gap — buyers can't open a product.** Claude Design prompt ready (see conversation log / PROMPT-TEMPLATE). |
+| Product detail page (`/marketplace/[id]`) | ✅ 2026-07-26 | ✅ | ⏳ | ⏳ | Supplier comparison sorted asc + BEST PRICE badge, tier ladder w/ unlock nudge, MOQ-clamped qty stepper, add-to-cart, 21+ banner gated on `verificationStatus`. Accepts cuid or `PRD…` id in URL. Marketplace cards now navigate here (ProductDetailModal retired from that path, files left in place). Builder verified vs schema; verifier verdict CLEAN (`wf_ff30cf23-e2a`). Built headless — `needs-visual-review` per ui-files.md. |
 | Cart/checkout redesign (multi-location + tier-aware) | ❌ | — | — | — | Designs specced, not built. |
 
 ### Wholesaler (seller) experience
 
 | Feature | Built | Wired | Verified | Deployed | Notes / gaps |
 |---|---|---|---|---|---|
-| Catalog CSV import (`/products/import`) | ✅ `e959d2f` | ❌ demo mode | — | ⏳ | Wizard UI complete; **commits are simulated** — needs `/api/products/import` + job runner. |
+| Catalog CSV import (`/products/import`) | ✅ `e959d2f` | ✅ 2026-07-26 | ⏳ | ⏳ | Real end-to-end: client CSV parse (RFC-4180-ish) + header auto-map → `POST /api/products/import` dryRun preview → `$transaction` commit (Product + ProductPricing, human `PRD…` ids). 5,000-row cap per request (job-runner batching = future work). Verifier fixed 2 copy defects in place (`wf_ff30cf23-e2a`). Minor: template download link `/api/products/import/template` still dead. |
 | Tier pricing editor (`/products/[id]/pricing`) | ✅ `e959d2f` | ✅ `522802b` | ⏳ | ⏳ | Full-replace `PUT /tiers`, ladder validation, Decimal money. Checkout already re-prices on tiers (pre-existing). |
 | Wholesaler onboarding wizard | ❌ | — | — | — | Designs specced (5-step). Not built. |
 | Approved-buyer management | ❌ schema only | — | — | — | `WholesalerBuyerApproval` table shipped in `522802b`; no UI/routes yet. |
@@ -65,7 +65,8 @@ _Last updated: 2026-05-06 · commits through `522802b`_
 | Email verification flow | ✅ `522802b` | ✅ | ⏳ | ⏳ | Hashed single-use tokens; register issues token; GET link target + resend. **Gap: mailer logs links (dev) — no SES/Resend transport. Seam: `src/lib/mailer.ts`.** |
 | Password reset flow | ✅ `522802b` | ✅ | ⏳ | ⏳ | Enumeration-safe, rate-limited, single-use, clears lockout. **Gap: `signOutEverywhere` accepted but JWT revocation needs sessionVersion claim.** |
 | Verify-email / reset-password screens | ✅ `e959d2f` | ✅ `522802b` | ⏳ | ⏳ | Split-canvas AuthShell shared component. |
-| Migrations run on deploy | ✅ `522802b` | ✅ | ⏳ first deploy is the test | ⏳ | `vercel-build`: `prisma generate && prisma migrate deploy && next build`. **Before `522802b` no migrations ran on Vercel at all.** |
+| Schema sync + seed on deploy | ✅ 2026-07-26 | ✅ | ⏳ first deploy is the test | ⏳ | `vercel-build`: `prisma generate && node scripts/vercel-db-prepare.mjs && next build`. Script skips DB steps when `DATABASE_URL` absent (compile-only first deploy), else `db push` (see decision log) then `db seed` (idempotent — bails if users exist). Launch runbook: `docs/DEPLOY.md`. |
+| Vercel project | ❌ | — | — | — | **Confirmed via Vercel API 2026-07-26: no project exists under the account.** Creating it is a dashboard action — step 1 of `docs/DEPLOY.md`. |
 | Design gallery (`/design-gallery`) | ✅ `e959d2f` | n/a static | — | ⏳ | **Stale: status labels predate the build-out — update SCREENS array.** |
 
 ### Schema (all on `main`, additive-only migrations)
@@ -84,6 +85,7 @@ Multi-agent audits run against specific commits. Findings land here with a verdi
 | Date | Audit | Commit audited | Result |
 |---|---|---|---|
 | 2026-05-06 | 7-dimension demo-readiness audit (38 agents, adversarial verification per finding) | `522802b` | **30 confirmed / 15 minor / 1 refuted** → deduped to 5 clusters, all fixed in the commit following `857a047` (see table) |
+| 2026-07-26 | Build workflow `wf_ff30cf23-e2a`: 2 builders + 2 independent verifiers (product detail page, CSV import backend) | `f314138` base | product-detail: **CLEAN** (0 defects). csv-import: **FIXED_IN_PLACE** — 2 copy-level defects corrected by the verifier (SKU-collision message scope, template field count). Orchestrator spot-checked Prisma selects vs schema + Badge variants post-hoc: pass. |
 
 ### Confirmed findings → resolutions (CLOSED — do not re-investigate)
 
@@ -111,10 +113,12 @@ Multi-agent audits run against specific commits. Findings land here with a verdi
 
 ## Next up (priority order)
 
-1. Fix whatever the in-flight audit confirms (esp. compile errors + auth funnel).
-2. Wire admin verification queue UI to its live API.
-3. Product detail page + search results (unblocks the core buying loop).
-4. Vercel Blob for document bytes; SES/Resend in `src/lib/mailer.ts`.
-5. CSV import backend (`/api/products/import` + job).
-6. State-legality rules engine (`restrictedStates` enforcement at checkout).
-7. Roadmap expansion: **`docs/IDEAS-2026-05.md`** (landed 2026-05-06) — 6-lens ideation synthesis: top-8 build-next list, 3 demo-wow AI picks, gas-station persona shortlist. Promote ideas from there per its "How to promote" section.
+1. **Deploy: create the Vercel project** — no project exists yet; owner follows `docs/DEPLOY.md` (import repo → attach Neon → env vars → redeploy). First green build = compile verification for everything above.
+2. Fix whatever the first Vercel build log surfaces (it is the first compiler this codebase has ever met).
+3. Vercel Blob for document bytes (COMP-3 — last Pilot-gate feature).
+4. State-legality rules engine (`restrictedStates` enforcement at checkout, ORD-7) + checkout ship-to selector (ORD-6).
+5. Camera decode via `@zxing/browser` on the scanner (RCV-4).
+6. GA gates: payments (ORD-8), PACT export (COMP-5), wholesaler onboarding (SELL-1); baseline migration on a Node machine → revert to `migrate deploy`.
+7. Roadmap expansion: **`docs/IDEAS-2026-05.md`** — top-8 build-next list, 3 demo-wow AI picks, gas-station persona shortlist. Promote per its "How to promote" section.
+
+_Done since the last revision of this list: admin queue wired (was #2) · product detail page (was #3) · Resend transport (was half of #4) · CSV import backend (was #5)._

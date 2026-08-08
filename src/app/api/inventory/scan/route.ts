@@ -22,7 +22,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { receiptId, barcode, quantity, condition } = validation.data;
+    const { receiptId, barcode, quantity, condition, lotNumber, serialNumber, expirationDate } =
+      validation.data;
 
     // Verify receipt exists and is receivable (cheap read outside the txn)
     const receipt = await prisma.inventoryReceipt.findUnique({
@@ -51,20 +52,28 @@ export async function POST(request: NextRequest) {
       product = await prisma.product.findFirst({ where: { upcCode: barcode } });
     }
 
-    // Always record the scan, regardless of match.
-    await prisma.receiptScan.create({
-      data: {
-        receiptId,
-        userId: user.id,
-        barcode,
-        barcodeType: barcodeRecord?.barcodeType || 'UPC',
-        productId: product?.id || null,
-        scannedQty: quantity,
-        condition,
-      },
-    });
+    // Common payload shared between the unmatched-scan create and the
+    // in-transaction create below. Lot/serial/expiration are recorded on
+    // every scan so a multi-lot delivery against a single SKU line is
+    // reconstructable from the append-only scan log.
+    const expirationDateValue = expirationDate ? new Date(expirationDate) : null;
+    const scanData = {
+      receiptId,
+      userId: user.id,
+      barcode,
+      barcodeType: barcodeRecord?.barcodeType || 'UPC',
+      productId: product?.id || null,
+      scannedQty: quantity,
+      condition,
+      lotNumber: lotNumber ?? null,
+      serialNumber: serialNumber ?? null,
+      expirationDate: expirationDateValue,
+    };
 
     if (!product) {
+      // Record the orphan scan outside the transaction — there's no line
+      // to update, so the multi-write rule doesn't apply.
+      await prisma.receiptScan.create({ data: scanData });
       logger.warn({ event: 'barcode_not_found', barcode, receiptId });
       return NextResponse.json({
         matched: false,
@@ -86,6 +95,9 @@ export async function POST(request: NextRequest) {
     });
 
     if (!matchingLine) {
+      // No expected line for this product — still record the scan for the
+      // audit trail, but no atomic line/discrepancy update is needed.
+      await prisma.receiptScan.create({ data: scanData });
       return NextResponse.json({
         matched: true,
         product: {
@@ -99,12 +111,35 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Atomic update + recompute totals + maybe-create discrepancy.
-    // Doing this in a transaction means two concurrent scans on the same
-    // receipt will not lose updates or compute stale totals.
+    // Atomic update + recompute totals + maybe-create discrepancy + scan
+    // record. Doing this in a transaction means two concurrent scans on
+    // the same receipt will not lose updates or compute stale totals,
+    // and the scan log + line state always agree.
     const txResult = await prisma.$transaction(async (tx) => {
+      // Persist the scan inside the transaction so it lands together with
+      // the line update and any discrepancy created from it.
+      await tx.receiptScan.create({ data: scanData });
+
       const damagedDelta =
         condition === 'DAMAGED_MINOR' || condition === 'DAMAGED_MAJOR' ? quantity : 0;
+
+      // First-scan-wins for line-level lot metadata. If the line was
+      // created by an ASN that included the lot, we keep it; otherwise
+      // the first scan to provide one populates the line. Subsequent
+      // scans never overwrite, even if they pass a different lot — the
+      // per-scan record preserves the divergence for recall analysis.
+      const lineLotPatch: {
+        lotNumber?: string;
+        serialNumber?: string;
+        expirationDate?: Date;
+      } = {};
+      if (lotNumber && !matchingLine.lotNumber) lineLotPatch.lotNumber = lotNumber;
+      if (serialNumber && !matchingLine.serialNumber) {
+        lineLotPatch.serialNumber = serialNumber;
+      }
+      if (expirationDateValue && !matchingLine.expirationDate) {
+        lineLotPatch.expirationDate = expirationDateValue;
+      }
 
       // Atomic increment so concurrent scans don't lose updates.
       const updatedLine = await tx.receiptLine.update({
@@ -113,6 +148,7 @@ export async function POST(request: NextRequest) {
           qtyReceived: { increment: quantity },
           qtyDamaged: damagedDelta > 0 ? { increment: damagedDelta } : undefined,
           condition: condition as never,
+          ...lineLotPatch,
         },
       });
 

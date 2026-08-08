@@ -577,29 +577,46 @@ model InventoryReceipt {
 }
 
 model ReceiptLine {
-  id           String            @id @default(cuid())
-  receiptId    String
-  lineNumber   Int
-  productId    String?
-  sku          String?
-  upc          String?
-  productName  String
-  qtyExpected  Int
-  qtyReceived  Int               @default(0)
-  qtyDamaged   Int               @default(0)
-  unitCost     Decimal?          @db.Decimal(10, 2)
-  condition    ItemCondition     @default(PENDING)
-  lineStatus   ReceiptLineStatus @default(PENDING)
-  notes        String?
-  photoUrls    Json?
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
+  id              String            @id @default(cuid())
+  receiptId       String
+  lineNumber      Int
+  productId       String?
+  sku             String?
+  upc             String?
+  productName     String
+  qtyExpected     Int
+  qtyReceived     Int               @default(0)
+  qtyDamaged      Int               @default(0)
+  unitCost        Decimal?          @db.Decimal(10, 2)
+  condition       ItemCondition     @default(PENDING)
+  lineStatus      ReceiptLineStatus @default(PENDING)
+  notes           String?
+  photoUrls       Json?
+  /// Lot/batch number from the manufacturer. Required for recall lookups —
+  /// when a recall is issued by lot, ops query `where: { lotNumber }` to
+  /// find every receipt + line + downstream order that consumed it.
+  /// Populated either from the ASN payload or the first scan that records it.
+  lotNumber       String?
+  /// Per-unit serial number when the SKU is serialized (rare in this category;
+  /// most vape/tobacco SKUs are lot-tracked, not serial-tracked). Captured
+  /// from ASN or scan when the supplier provides it.
+  serialNumber    String?
+  /// Manufacturer-stamped expiration date. Used for FEFO (first-expire-first-out)
+  /// pick logic and to flag near-expired inventory for clearance.
+  expirationDate  DateTime?
+  /// Manufacture date. Some state regulators require it for tobacco/vape
+  /// shipment records; we capture it here so it lives next to the lot.
+  manufactureDate DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 
   receipt InventoryReceipt @relation(fields: [receiptId], references: [id])
   product Product?         @relation(fields: [productId], references: [id])
 
   @@index([receiptId])
   @@index([productId])
+  @@index([lotNumber])
+  @@index([expirationDate])
   @@map("receipt_lines")
 }
 
@@ -612,6 +629,17 @@ model ReceiptScan {
   productId       String?
   scannedQty      Int       @default(1)
   condition       String?   @default("GOOD")
+  /// Lot/batch number captured at scan time. Mirrors ReceiptLine.lotNumber
+  /// but is recorded per-scan so a multi-lot delivery (same SKU, two lots)
+  /// is reconstructable from the append-only scan log even if the
+  /// line-level lot is later corrected. Recall queries fall back to this
+  /// when ReceiptLine.lotNumber is NULL.
+  lotNumber       String?
+  /// Serial number captured at scan time (when present on the unit).
+  serialNumber    String?
+  /// Expiration date captured at scan time. Useful when the ASN omitted it
+  /// and the warehouse worker reads it off the package.
+  expirationDate  DateTime?
   scanTimestamp   DateTime  @default(now())
   syncedFromOffline Boolean @default(false)
 
@@ -620,6 +648,7 @@ model ReceiptScan {
 
   @@index([receiptId, scanTimestamp])
   @@index([userId, scanTimestamp])
+  @@index([lotNumber])
   @@map("receipt_scans")
 }
 

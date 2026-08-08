@@ -100,4 +100,94 @@ describe('inventoryWebhookSchema', () => {
     });
     expect(r.success).toBe(false);
   });
+
+  // ─── Lot / serial / expiration tracking (compliance recalls) ───
+
+  it('accepts line items with optional lot/serial/expiration metadata', () => {
+    const r = inventoryWebhookSchema.safeParse({
+      ...minimalValid,
+      line_items: [
+        {
+          sku: 'SKU-1',
+          product_name: 'Widget',
+          quantity: 5,
+          lot_number: 'LOT-2026-04',
+          serial_number: 'SN-0001',
+          expiration_date: '2027-12-31T00:00:00.000Z',
+          manufacture_date: '2026-01-15T00:00:00.000Z',
+        },
+      ],
+    });
+    expect(r.success).toBe(true);
+    if (r.success) {
+      const line = r.data.line_items[0];
+      expect(line.lot_number).toBe('LOT-2026-04');
+      expect(line.serial_number).toBe('SN-0001');
+      expect(line.expiration_date).toBe('2027-12-31T00:00:00.000Z');
+      expect(line.manufacture_date).toBe('2026-01-15T00:00:00.000Z');
+    }
+  });
+
+  it('keeps line items without lot fields fully optional', () => {
+    const r = inventoryWebhookSchema.safeParse(minimalValid);
+    expect(r.success).toBe(true);
+    if (r.success) {
+      const line = r.data.line_items[0];
+      expect(line.lot_number).toBeUndefined();
+      expect(line.serial_number).toBeUndefined();
+      expect(line.expiration_date).toBeUndefined();
+      expect(line.manufacture_date).toBeUndefined();
+    }
+  });
+
+  it('rejects malformed expiration_date on a line item', () => {
+    const r = inventoryWebhookSchema.safeParse({
+      ...minimalValid,
+      line_items: [
+        {
+          sku: 'SKU-1',
+          product_name: 'Widget',
+          quantity: 5,
+          expiration_date: 'soon',
+        },
+      ],
+    });
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      const expErr = r.error.issues.find((i) =>
+        i.path.includes('expiration_date'),
+      );
+      expect(expErr).toBeDefined();
+    }
+  });
+
+  it('rejects malformed manufacture_date on a line item', () => {
+    const r = inventoryWebhookSchema.safeParse({
+      ...minimalValid,
+      line_items: [
+        {
+          sku: 'SKU-1',
+          product_name: 'Widget',
+          quantity: 5,
+          manufacture_date: 'recent',
+        },
+      ],
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it('rejects an empty lot_number string', () => {
+    const r = inventoryWebhookSchema.safeParse({
+      ...minimalValid,
+      line_items: [
+        {
+          sku: 'SKU-1',
+          product_name: 'Widget',
+          quantity: 5,
+          lot_number: '',
+        },
+      ],
+    });
+    expect(r.success).toBe(false);
+  });
 });

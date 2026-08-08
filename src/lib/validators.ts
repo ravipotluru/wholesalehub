@@ -81,6 +81,12 @@ export const barcodeScanSchema = z.object({
   barcode: z.string().min(1),
   quantity: z.number().int().positive().default(1),
   condition: z.enum(['GOOD', 'DAMAGED_MINOR', 'DAMAGED_MAJOR', 'WRONG_ITEM']).default('GOOD'),
+  // Optional compliance / recall metadata. The warehouse worker reads these
+  // off the carton when the ASN didn't include them. First scan to provide
+  // a `lotNumber` populates ReceiptLine.lotNumber (see scan route).
+  lotNumber: z.string().min(1).max(120).optional(),
+  serialNumber: z.string().min(1).max(120).optional(),
+  expirationDate: z.string().datetime().optional(),
 });
 
 export const orderStatusUpdateSchema = z.object({
@@ -111,6 +117,13 @@ export const inventoryWebhookSchema = z.object({
         product_name: z.string().min(1),
         quantity: z.number().int().nonnegative(),
         unit_cost: z.number().nonnegative().optional(),
+        // Lot/serial/expiration tracking for compliance recalls. All
+        // optional — older suppliers don't send them, and the warehouse
+        // can backfill from the physical scan.
+        lot_number: z.string().min(1).max(120).optional(),
+        serial_number: z.string().min(1).max(120).optional(),
+        expiration_date: z.string().datetime().optional(),
+        manufacture_date: z.string().datetime().optional(),
       }),
     )
     .max(10000, 'Too many line items'),
